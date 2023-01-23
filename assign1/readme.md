@@ -1,4 +1,4 @@
 ## STEPS TO RUN
 
-- Install and set up postgresql
-- Install psycopg2 and sqlalchemy
+- Install the dependencies: pip install -r requirements.txt
+- Run the app from assgn1 directory: flask --app api --debug run

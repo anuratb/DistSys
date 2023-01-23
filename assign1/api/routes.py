@@ -1,6 +1,6 @@
 
-from flask import   request, jsonify
-from api import app,db
+from flask import request, jsonify
+from api import app, db
 
 import flask
 
@@ -35,7 +35,6 @@ def topics():
         pass
     else:
         pass
-
 
 
 
