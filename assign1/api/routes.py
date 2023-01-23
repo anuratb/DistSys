@@ -1,9 +1,8 @@
 
 from flask import   request, jsonify
-from api import app,db
-
+from api import app,db,cnt
 import flask
-cnt = 0
+
 '''
 Method: POST
 Endpoint: /topics
@@ -33,13 +32,13 @@ onFailure:
 @ app.route("/topics", methods=[ 'GET','POST'])
 def topics():
     print('Hello')
-    print(flask.request.get_json())
+    global cnt
+  
+   # print(flask.request.get_json())
     if(flask.request.method=='GET'):
         cnt+=1
-        print(cnt)
-        ret = {
-            "a":1
-        }
+        print("---->"+str(cnt))
+        ret = "Hello"
         return ret
     else:
         pass
@@ -47,13 +46,12 @@ def topics():
 
 
 @ app.route("/topics2", methods=[ 'GET','POST'])
-def topics():
+def topics2():
+    global cnt
     if(flask.request.method=='GET'):
         cnt+=1
         print(cnt)
-        ret = {
-            "a":1
-        }
+        ret = "Hello"
         return ret
     else:
         pass
