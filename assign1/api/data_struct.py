@@ -1,10 +1,11 @@
+import threading
 
 class TopicNode:
     
     def __init__(self, topicID_):
         self.topicID = topicID_
-        self.producerList = [] # List of subscribed producers
-        self.consumerList = [] # List of subscribed consumers
+        self.producerList = [0, 1] # List of subscribed producers
+        self.consumerList = [0, 1] # List of subscribed consumers
 
     def subscribeProducer(self, producerID_):
         self.producerList.append(producerID_)
@@ -16,39 +17,89 @@ class TopicNode:
 class Queue:
     # topic-wise message queues
     # Key: TopicID, Value: An array of messages
-    queue = {}
+    queue = {
+        0: []
+    }
     # Topic-wise locks
     # Key: TopicID, Value: lock
-    locks = {}
+    locks = {
+        0: threading.Lock()
+    }
     # Key: topicname, Value: TopicNode
-    topics = {}
-    # Key: Consumer ID, Value: offset in the topic queue
-    consumers = {}
+    topics = {
+        'A': TopicNode(0)
+    }
+    # Key: Consumer ID, Value: {offset in the topic queue, lock}
+    consumers = {
+        0: [0, threading.Lock()],
+        1: [0, threading.Lock()]
+    }
 
     @classmethod
-    def createTopic(topicName):
+    def createTopic(cls, topicName):
         pass
 
     @classmethod
-    def listTopics():
+    def listTopics(cls):
         pass
 
     @classmethod
-    def registerConsumer(topicName):
+    def registerConsumer(cls, topicName):
         pass
 
     @classmethod
-    def registerProducer(topicName):
+    def registerProducer(cls, topicName):
         pass
 
     @classmethod
-    def enqueue(topicName, prodID, msg):
-        pass
+    def enqueue(cls, topicName, prodID, msg):
+        # Check if topic exists
+        try:
+            topicID = cls.topics[topicName].topicID
+        except Exception as _:
+            raise Exception("Error: No such topic exists!")
+        
+        # Check if user is registered for the topic
+        if prodID not in cls.topics.get(topicName).producerList:
+            raise Exception("Error: Invalid producer ID!")
+
+        # Get the lock for the queue with topicName
+        lock = cls.locks[topicID]
+        lock.acquire()
+        cls.queue[topicID].append(msg)
+        lock.release()
+
 
     @classmethod
-    def dequeue(topicName, conID):
-        pass
-    
+    def dequeue(cls, topicName, conID):
+        # Check if topic exists
+        try:
+            topicID = cls.topics[topicName].topicID
+        except Exception as _:
+            raise Exception("Error: No such topic exists!")
+        
+        # Check if user is registered for the topic
+        if conID not in cls.topics.get(topicName).consumerList:
+            raise Exception("Error: Invalid consumer ID!")
+        
+        # Get the offset and lock
+        lock = cls.consumers.get(conID)[1]
+        lock.acquire()
+        Q = cls.queue[topicID]
+        index = cls.consumers.get(conID)[0]
+        l = len(Q)
+        # Check if messages are yet to be read
+        if index < l:
+            msg = Q[index]
+            # Update the offset/index
+            cls.consumers.get(conID)[0] += 1
+            lock.release()
+            return msg
+        else:
+            lock.release()
+            raise Exception("There are no new messages!")
+        
+
     @classmethod
-    def getSize(topicName, conID):
+    def getSize(cls, topicName, conID):
         pass

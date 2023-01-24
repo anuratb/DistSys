@@ -28,17 +28,30 @@ def create_app(test_config = None):
     except OSError:
         pass
     
-    Queue.locks = {0: threading.Lock(), 1: threading.Lock()}
-
     # a simple page that says hello
-    @app.route('/hello')
-    def hello():
-        Queue.locks[0].acquire()
-        return 'Hello, World!'
+    @app.route('/hello1')
+    def hello1():
+        try:
+            # msg = Queue.dequeue('A', 0)
+            msg = Queue.enqueue('A', 1, "HELLO")
+            msg = "Success"
+        except Exception as err:
+            return err.args[0]
 
-    return app,db
+        return msg
 
-app,db = create_app()
+    @app.route('/hello2')
+    def hello2():
+        try:
+            msg = Queue.dequeue('A', 0)
+        except Exception as err:
+            return err.args[0]
+
+        return msg
+
+    return app, db
+
+app, db = create_app()
 from api import routes
 
  
