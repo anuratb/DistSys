@@ -37,11 +37,15 @@ class Queue:
 
     @classmethod
     def createTopic(cls, topicName):
-        pass
+        if topicName in cls.topics.key():
+            raise Exception('Topicname: {} already exists'.format(topicName))
+        
+        nid  = len(cls.topics)
+        cls.topics[topicName] = TopicNode(nid)
 
     @classmethod
     def listTopics(cls):
-        pass
+        return cls.topics
 
     @classmethod
     def registerConsumer(cls, topicName):
