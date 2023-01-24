@@ -14,7 +14,7 @@ def create_app(test_config = None):
     app.config['SECRET_KEY'] = '5791628bb0b13ce0c676dfde280ba245'
     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
     db = SQLAlchemy(app)
-    
+  
     if test_config is None:
         # load the instance config, if it exists, when not testing
         app.config.from_pyfile('config.py', silent=True)
@@ -49,6 +49,23 @@ def create_app(test_config = None):
 
         return msg
 
+    @app.route('/testAddtopic')
+    def testAddtopic():
+        try:
+            Queue.createTopic("News")
+        except Exception as err:
+            return err.args[0]
+
+        return "Success adding topic"+str(Queue.listTopics())
+    
+    @app.route('/testGetSize')
+    def testGetSize():
+        try:
+            ln = Queue.getSize('A',0)
+        except Exception as err:
+            return err.args[0]
+
+        return "Success "+str(ln)
     return app, db
 
 app, db = create_app()
