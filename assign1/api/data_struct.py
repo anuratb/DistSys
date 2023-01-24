@@ -17,6 +17,7 @@ class TopicNode:
 class Queue:
     # topic-wise message queues
     # Key: TopicID, Value: An array of messages
+    glob_lck = threading.Lock()
     queue = {
         0: []
     }
@@ -37,11 +38,18 @@ class Queue:
 
     @classmethod
     def createTopic(cls, topicName):
-        pass
+        if topicName in cls.topics.keys():
+            raise Exception('Topicname: {} already exists'.format(topicName))
+        cls.glob_lck.acquire()
+        nid  = len(cls.topics)
+        cls.topics[topicName] = TopicNode(nid)
+        cls.queue[nid] = []
+        cls.locks[nid] = threading.Lock()
+        cls.glob_lck.release()
 
     @classmethod
     def listTopics(cls):
-        pass
+        return cls.topics
 
     @classmethod
     def registerConsumer(cls, topicName):
@@ -102,4 +110,10 @@ class Queue:
 
     @classmethod
     def getSize(cls, topicName, conID):
-        pass
+        if(topicName not in cls.topics.keys()):
+            raise Exception("Error: No such topic, {} exists!".format(topicName))
+        # Check if user is registered for the topic
+        if conID not in cls.topics.get(topicName).consumerList:
+            raise Exception("Error: Invalid consumer ID!")
+        return len(cls.queue[cls.topics[topicName].topicID])-cls.consumers.get(conID)[0]
+        
