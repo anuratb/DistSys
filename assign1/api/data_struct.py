@@ -41,7 +41,17 @@ class Queue:
         0: [0, threading.Lock()],
         1: [0, threading.Lock()]
     }
-
+    @classmethod
+    def clear(cls):
+        cls.glob_lck = threading.Lock()
+        cls.queue = {}
+        # Topic-wise locks
+        # Key: TopicID, Value: lock
+        cls.locks = {}
+        # Key: topicname, Value: TopicNode
+        cls.topics = {}
+        # Key: Consumer ID, Value: {offset in the topic queue, lock}
+        cls.consumers = {}
     @classmethod
     def createTopic(cls, topicName):
         if topicName in cls.topics.keys():

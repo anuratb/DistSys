@@ -14,6 +14,7 @@ class QueueDB(db.model):
     
 class Topics(db.model):
     id = db.Column(db.Integer,primary_key=True)
+    value = db.Column(db.String,primary_key = False)
     start_ind = db.Column(db.Integer,nullable=True)
     end_ind = db.Column(db.Integer,nullable=True)
     producers = db.relationship('Producer',backref='topic',lazy=True)
@@ -24,13 +25,9 @@ class Producer(db.model):
     id = db.Column(db.Integer,primary_key=True)
     topic_id = db.Column(db.Integer,db.ForeignKey('topic.id'),nullable=False)
 
-class ConsumerSub(db.model):
+class Consumer(db.model):
     id = db.Column(db.Integer,primary_key=True)
     offset = db.Column(db.Intger,nullable=False)
     topic_id = db.Column(db.Integer,db.ForeignKey('topic.id'),nullable=False)
-    c_id = db.Column(db.Integer,db.ForeignKey('consumer.id'),nullable=False)
-
-class Consumer(db.model):
-    id = db.Column(db.Integer,primary_key = True)
-    subs = db.relationship('Sub',backref='consumer',lazy=True)
+    
 
