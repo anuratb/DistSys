@@ -7,6 +7,8 @@ from api.data_struct import *
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 
 
+    
+
 def create_app(test_config = None):
     # create and configure the app
     app = Flask(__name__, instance_relative_config = True)
@@ -89,6 +91,30 @@ def create_app(test_config = None):
     return app, db
 
 app, db = create_app()
+from api.models import QueueDB,Topics,Producer,ConsumerSub,Consumer
+def load_from_db():
+    Queue.clear()
+    Queue.glob_lck = threading.Lock()
+    for topic in Topics.query.all():
+        Queue.topics[topic.value] = TopicNode(topic.id)
+        Queue.queue[topic.id] = []
+        Queue.locks[topic.id] = threading.Lock()
+        cur = topic.start_ind
+        lst = topic.end_ind
+        #Construct the queue for the given topic
+        while(cur is not None):
+            obj = QueueDB.query.filter(id=cur).first()
+            Queue.queue[topic.id].append(obj.value)
+            if(cur==lst):break
+            cur = obj.nxt_id
+        #construct the producers
+        for producer in topic.producers:
+            Queue.topics[topic.value].subscribeProducer(producer.id)
+        #construct the consumers
+        for consumer in topic.consumers:
+            Queue.topics[topic.value].subscribeConsumer(consumer.id)
+            Queue.consumers[consumer.id] = [consumer.offset,threading.Lock()]
+        
 from api import routes
 
  
