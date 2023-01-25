@@ -67,6 +67,25 @@ def create_app(test_config = None):
             return err.args[0]
 
         return "Success "+str(ln)
+
+    @app.route('/testc')
+    def testc():
+        try:
+            c = Queue.registerConsumer('A')
+        except Exception as err:
+            return err.args[0]
+
+        return "Success "+str(c)
+
+    @app.route('/testp')
+    def testp():
+        try:
+            c = Queue.registerProducer('A')
+        except Exception as err:
+            return err.args[0]
+
+        return "Success "+str(c)
+
     return app, db
 
 app, db = create_app()
