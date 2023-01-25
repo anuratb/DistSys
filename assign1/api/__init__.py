@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import threading
 from api.data_struct import *
+
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 
 
