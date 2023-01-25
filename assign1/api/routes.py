@@ -26,7 +26,19 @@ from data_struct import *
 '''
 @ app.route("/topics", methods=['POST'])
 def create_topic():
-    pass
+    topic_name : str = request.args.get('name' , type=str) 
+    try : 
+        Queue.createTopic(topic_name) 
+        return {
+            "status" : "Success" , 
+            "message" : 'Topic {} created successfully'.format(topic_name)
+            }
+    
+    except Exception as e: 
+        return {
+            "status" : "Failure" ,
+             "message" : str(e)
+            }
 
 
 '''
@@ -48,7 +60,18 @@ def create_topic():
 
 @ app.route("/topics", methods=['GET'])
 def list_topics():
-    pass
+    try : 
+        topic_list = Queue.listTopics()
+        return {
+            "status" : "Success" , 
+            "topics" : topic_list 
+            }
+    
+    except Exception as e: 
+        return {
+            "status" : "Failure" ,
+             "message" : str(e)
+            }
 
 '''
     c. RegisterConsumer
