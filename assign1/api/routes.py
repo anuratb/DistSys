@@ -144,7 +144,22 @@ def register_producer(topic : str):
 
 @ app.route("/producer/produce", methods=['POST'])
 def enqueue(topic : str , producer_id : int , message : str):
-    pass
+    topic: str = request.args.get('topic', type=str)
+    producer_id: int = request.args.get('producer_id', type=int)
+    message: str = request.args.get('message', type=str)
+
+    try:
+        Queue.enqueue(topic, producer_id , message)
+        return {
+            "status": "Success",
+            "message": ""
+        }
+
+    except Exception as e:
+        return {
+            "status": "Failure",
+            "message": str(e)
+        }
 
 '''
     f. Dequeue
@@ -166,10 +181,22 @@ def enqueue(topic : str , producer_id : int , message : str):
 
 @ app.route("/consumer/consume", methods=['GET'])
 def dequeue():
-    topic : str = "Hello"
-    consumer_id : int = 0
+    topic: str = request.args.get('topic', type=str)
+    consumer_id: int = request.args.get('consumer_id', type=int)
 
-    pass
+    try :
+        Queue.dequeue(topic, consumer_id)
+        return {
+            "status": "Success",
+            "message": f"Topic {topic} dequed for consumer {consumer_id}!!"
+        }
+
+    except Exception as e : 
+        return {
+            "status" : "Failure" ,
+             "message" : str(e)
+            }
+    
 
 '''
     Size
