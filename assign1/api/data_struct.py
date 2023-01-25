@@ -5,8 +5,14 @@ class TopicNode:
     def __init__(self, topicID_):
         self.topicID = topicID_
         self.producerList = [0, 1] # List of subscribed producers
+        self.plock = {
+            0: threading.Lock()
+        }
         self.consumerList = [0, 1] # List of subscribed consumers
-
+        self.clock = {
+            0: threading.Lock()
+        }
+        
     def subscribeProducer(self, producerID_):
         self.producerList.append(producerID_)
     
@@ -53,11 +59,28 @@ class Queue:
 
     @classmethod
     def registerConsumer(cls, topicName):
-        pass
-
+        if not topicName in cls.topics.keys():
+            raise Exception('Topicname: {} does not exists'.format(topicName))
+        topicID = cls.topics[topicName].topicID
+        lock = cls.locks[topicID]
+        lock.acquire()
+        nid = len(cls.topics[topicName].consumerList)
+        cls.topics[topicName].consumerList.append(nid)
+        cls.consumers[nid]=[nid,threading.Lock()]
+        lock.release()
+        return nid
+            
     @classmethod
     def registerProducer(cls, topicName):
-        pass
+        if topicName not in cls.topics.keys():
+            cls.createTopic(topicName)
+        topicID = cls.topics[topicName].topicID
+        lock = cls.locks[topicID]
+        lock.acquire()
+        nid = len(cls.topics[topicName].producerList)
+        cls.topics[topicName].producerList.append(nid)
+        lock.release()
+        return nid
 
     @classmethod
     def enqueue(cls, topicName, prodID, msg):
