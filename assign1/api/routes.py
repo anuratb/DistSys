@@ -1,7 +1,7 @@
 
 from flask import request, jsonify
 from api import app, db
-from data_struct import *
+from api.data_struct import *
 
 '''
     a. CreateTopic
@@ -198,7 +198,7 @@ def size():
     except Exception as e: 
         return {
             "status" : "Failure" ,
-             "message" : e
+             "message" : str(e)
             }
 
 
