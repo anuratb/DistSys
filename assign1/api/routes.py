@@ -62,9 +62,14 @@ def create_topic():
 def list_topics():
     try : 
         topic_list = Queue.listTopics()
+        topic_string : str = ""
+
+        for topic in topic_list.keys() :
+            topic_string += topic + ", "
+        
         return {
             "status" : "Success" , 
-            "topics" : topic_list 
+            "topics" : topic_string 
             }
     
     except Exception as e: 
