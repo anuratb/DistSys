@@ -1,7 +1,7 @@
 from api import db
 
 
-class QueueDB(db.model):
+class QueueDB(db.Model):
     '''
     Id : PK int
     Nxt_id: int
@@ -12,7 +12,7 @@ class QueueDB(db.model):
     nxt_id = db.Column(db.Integer)
     value = db.Column(db.String,nullable=False)
     
-class Topics(db.model):
+class Topics(db.Model):
     id = db.Column(db.Integer,primary_key=True)
     value = db.Column(db.String,primary_key = False)
     start_ind = db.Column(db.Integer,nullable=True)
@@ -21,13 +21,13 @@ class Topics(db.model):
     consumers = db.relationship('Consumer',backref='topic',lazy=True)
 
 
-class Producer(db.model):
+class Producer(db.Model):
     id = db.Column(db.Integer,primary_key=True)
-    topic_id = db.Column(db.Integer,db.ForeignKey('topic.id'),nullable=False)
+    topic_id = db.Column(db.Integer,db.ForeignKey('topic.id'))
 
-class Consumer(db.model):
+class Consumer(db.Model):
     id = db.Column(db.Integer,primary_key=True)
-    offset = db.Column(db.Intger,nullable=False)
-    topic_id = db.Column(db.Integer,db.ForeignKey('topic.id'),nullable=False)
+    offset = db.Column(db.Integer,nullable=False)
+    topic_id = db.Column(db.Integer,db.ForeignKey('topic.id'))
     
 

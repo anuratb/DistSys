@@ -1,7 +1,7 @@
 
 from flask import request, jsonify
 from api import app, db
-from api.data_struct import *
+from api.data_struct import TopicNode,Queue
 
 '''
     a. CreateTopic
