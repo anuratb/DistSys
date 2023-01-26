@@ -1,5 +1,6 @@
 import threading
-
+from api import db
+from api.models import QueueDB,Topics,Producer,Consumer
 class TopicNode:
     
     def __init__(self, topicID_):
@@ -30,17 +31,20 @@ class Queue:
     # Topic-wise locks
     # Key: TopicID, Value: lock
     locks = {
-        0: threading.Lock()
+       # 0: threading.Lock()
     }
     # Key: topicname, Value: TopicNode
     topics = {
-        'A': TopicNode(0)
+        #'A': TopicNode(0)
     }
     # Key: Consumer ID, Value: {offset in the topic queue, lock}
     consumers = {
-        0: [0, threading.Lock()],
-        1: [0, threading.Lock()]
+       # 0: [0, threading.Lock()],
+       # 1: [0, threading.Lock()]
     }
+    cntCons = 0
+    cntProd = 0
+    cntMessage = 0
     @classmethod
     def clear(cls):
         cls.glob_lck = threading.Lock()
@@ -52,6 +56,9 @@ class Queue:
         cls.topics = {}
         # Key: Consumer ID, Value: {offset in the topic queue, lock}
         cls.consumers = {}
+        cls.cntCons=0
+        cls.cntMessage=0
+        cls.cntProd = 0
     @classmethod
     def createTopic(cls, topicName):
         if topicName in cls.topics.keys():
@@ -61,6 +68,9 @@ class Queue:
         cls.topics[topicName] = TopicNode(nid)
         cls.queue[nid] = []
         cls.locks[nid] = threading.Lock()
+        #db updates
+        db.session.add(Topics(id=nid,value=topicName))
+        db.session.commit()
         cls.glob_lck.release()
 
     @classmethod
@@ -74,9 +84,15 @@ class Queue:
         topicID = cls.topics[topicName].topicID
         lock = cls.locks[topicID]
         lock.acquire()
-        nid = len(cls.topics[topicName].consumerList)
+        nid = cls.cntCons
+        cls.cntCons+=1
         cls.topics[topicName].consumerList.append(nid)
         cls.consumers[nid]=[nid,threading.Lock()]
+        #db updates
+        obj = Consumer(id=nid,offset=0)
+        Topics.query.filterby(id=topicID).first().consumers.append(obj)
+        db.session.add(obj)
+        db.session.commit()
         lock.release()
         return nid
             
@@ -87,8 +103,14 @@ class Queue:
         topicID = cls.topics[topicName].topicID
         lock = cls.locks[topicID]
         lock.acquire()
-        nid = len(cls.topics[topicName].producerList)
+        nid = cls.cntProd
+        cls.cntProd+=1
         cls.topics[topicName].producerList.append(nid)
+        #db updates
+        obj = Producer(id=nid)
+        Topics.query.filterby(id=topicID).first().producers.append(obj)
+        db.session.add(obj)
+        db.session.commit()
         lock.release()
         return nid
 
@@ -106,8 +128,31 @@ class Queue:
 
         # Get the lock for the queue with topicName
         lock = cls.locks[topicID]
+        cls.glob_lck.acquire()
+        nid = cls.cntMessage
+        cls.cntMessage+=1
+        cls.glob_lck.release()
+        prev_id = None
         lock.acquire()
-        cls.queue[topicID].append(msg)
+        if(len(cls.queue[topicID])>0): prev_id = cls.queue[topicID][-1][0]
+        cls.queue[topicID].append([nid,msg])
+        #DB updates
+        if(prev_id is None):
+            obj = QueueDB(id = nid,value=msg)
+            db.session.add(obj)
+            topic = Topics.query().filterby(id=topicID).first()
+            topic.start_ind = nid
+            topic.end_ind = nid
+            db.session.commit()
+            
+        else:
+            obj = QueueDB(id = nid,value=msg)
+            db.session.add(obj)
+            topic = Topics.query().filterby(id=topicID).first()
+            prevMsg = QueueDB.query.filterby(id=prev_id).first()
+            prevMsg.nxt_id = nid
+            topic.end_ind = nid
+            db.session.commit()
         lock.release()
 
 
@@ -134,6 +179,9 @@ class Queue:
             msg = Q[index]
             # Update the offset/index
             cls.consumers.get(conID)[0] += 1
+            obj = Consumer.query.filterby(id=conID).first()
+            obj.offset+=1
+            db.session.commit()
             lock.release()
             return msg
         else:
