@@ -9,7 +9,7 @@ DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 
     
 
-def create_app(test_config = None,db_uri=None):
+def create_app(test_config = None):
     # create and configure the app
     app = Flask(__name__, instance_relative_config = True)
 
@@ -119,6 +119,7 @@ def testp():
         return err.args[0]
 
     return "Success "+str(c)
+load_from_db()
 from api import routes
 
  

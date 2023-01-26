@@ -23,11 +23,11 @@ class Topics(db.Model):
 
 class Producer(db.Model):
     id = db.Column(db.Integer,primary_key=True)
-    topic_id = db.Column(db.Integer,db.ForeignKey('topic.id'))
+    topic_id = db.Column(db.Integer,db.ForeignKey('topics.id'))
 
 class Consumer(db.Model):
     id = db.Column(db.Integer,primary_key=True)
     offset = db.Column(db.Integer,nullable=False)
-    topic_id = db.Column(db.Integer,db.ForeignKey('topic.id'))
+    topic_id = db.Column(db.Integer,db.ForeignKey('topics.id'))
     
 
