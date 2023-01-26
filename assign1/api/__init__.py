@@ -49,7 +49,7 @@ def load_from_db():
         lst = topic.end_ind
         #Construct the queue for the given topic
         while(cur is not None):
-            obj = QueueDB.query.filter(id=cur).first()
+            obj = QueueDB.query.filter_by(id=cur).first()
             Queue.queue[topic.id].append(obj.value)
             if(cur==lst):break
             cur = obj.nxt_id
@@ -60,15 +60,15 @@ def load_from_db():
         for consumer in topic.consumers:
             Queue.topics[topic.value].subscribeConsumer(consumer.id)
             Queue.consumers[consumer.id] = [consumer.offset,threading.Lock()]
-    Queue.cntProd = Producer.query().count()
-    Queue.cntCons = Consumer.query().count()
-    Queue.cntMessage = QueueDB.query().count()
+    Queue.cntProd = Producer.query.count()
+    Queue.cntCons = Consumer.query.count()
+    Queue.cntMessage = QueueDB.query.count()
 # a simple page that says hello
 @app.route('/hello1')
 def hello1():
     try:
         # msg = Queue.dequeue('A', 0)
-        msg = Queue.enqueue('A', 1, "HELLO")
+        msg = Queue.enqueue('News', 1, "HELLO")
         msg = "Success"
     except Exception as err:
         return err.args[0]
@@ -78,7 +78,7 @@ def hello1():
 @app.route('/hello2')
 def hello2():
     try:
-        msg = Queue.dequeue('A', 0)
+        msg = Queue.dequeue('News', 0)
     except Exception as err:
         return err.args[0]
 
@@ -96,7 +96,7 @@ def testAddtopic():
 @app.route('/testGetSize')
 def testGetSize():
     try:
-        ln = Queue.getSize('A',0)
+        ln = Queue.getSize('News',0)
     except Exception as err:
         return err.args[0]
 
@@ -105,7 +105,7 @@ def testGetSize():
 @app.route('/testc')
 def testc():
     try:
-        c = Queue.registerConsumer('A')
+        c = Queue.registerConsumer('News')
     except Exception as err:
         return err.args[0]
 
@@ -114,11 +114,12 @@ def testc():
 @app.route('/testp')
 def testp():
     try:
-        c = Queue.registerProducer('A')
+        c = Queue.registerProducer('News')
     except Exception as err:
         return err.args[0]
 
     return "Success "+str(c)
+app.app_context().push()
 load_from_db()
 from api import routes
 

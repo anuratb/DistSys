@@ -90,7 +90,8 @@ class Queue:
         cls.consumers[nid]=[nid,threading.Lock()]
         #db updates
         obj = Consumer(id=nid,offset=0)
-        Topics.query.filterby(id=topicID).first().consumers.append(obj)
+        cur = Topics.query.filter_by(id=topicID).first()
+        cur.consumers.append(obj)
         db.session.add(obj)
         db.session.commit()
         lock.release()
@@ -107,8 +108,10 @@ class Queue:
         cls.cntProd+=1
         cls.topics[topicName].producerList.append(nid)
         #db updates
+        print(topicID)
         obj = Producer(id=nid)
-        Topics.query.filterby(id=topicID).first().producers.append(obj)
+        cur = Topics.query.filter_by(id=topicID).first()
+        cur.producers.append(obj)
         db.session.add(obj)
         db.session.commit()
         lock.release()
@@ -140,7 +143,7 @@ class Queue:
         if(prev_id is None):
             obj = QueueDB(id = nid,value=msg)
             db.session.add(obj)
-            topic = Topics.query().filterby(id=topicID).first()
+            topic = Topics.query.filter_by(id=topicID).first()
             topic.start_ind = nid
             topic.end_ind = nid
             db.session.commit()
@@ -148,8 +151,8 @@ class Queue:
         else:
             obj = QueueDB(id = nid,value=msg)
             db.session.add(obj)
-            topic = Topics.query().filterby(id=topicID).first()
-            prevMsg = QueueDB.query.filterby(id=prev_id).first()
+            topic = Topics.query.filter_by(id=topicID).first()
+            prevMsg = QueueDB.query.filter_by(id=prev_id).first()
             prevMsg.nxt_id = nid
             topic.end_ind = nid
             db.session.commit()
@@ -179,7 +182,7 @@ class Queue:
             msg = Q[index]
             # Update the offset/index
             cls.consumers.get(conID)[0] += 1
-            obj = Consumer.query.filterby(id=conID).first()
+            obj = Consumer.query.filter_by(id=conID).first()
             obj.offset+=1
             db.session.commit()
             lock.release()
