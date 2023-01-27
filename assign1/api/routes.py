@@ -98,8 +98,20 @@ def list_topics():
 '''
 
 @ app.route("/consumer/register", methods=['POST'])
-def register_consumer(topic : str):
-    pass
+def register_consumer():
+    topic = request.args.get("topic",type=str)
+    try:
+        cid = Queue.registerConsumer(topic)
+        return {
+            "status":"Sucess",
+            "consumer_id":cid
+        }
+    except Exception as e:
+        return {
+            "status": "Failure",
+            "message": str(e)
+        }
+    
 
 '''
     d. RegisterProducer
@@ -120,8 +132,19 @@ def register_consumer(topic : str):
 '''
 
 @ app.route("/producer/register", methods=['POST'])
-def register_producer(topic : str):
-    pass
+def register_producer():
+    topic = request.args.get("topic",type=str)
+    try:
+        pid = Queue.registerProducer(topic)
+        return {
+            "status":"Sucess",
+            "producer_id":pid
+        }
+    except Exception as e:
+        return {
+            "status": "Failure",
+            "message": str(e)
+        }
 
 
 '''
@@ -143,7 +166,7 @@ def register_producer(topic : str):
 '''
 
 @ app.route("/producer/produce", methods=['POST'])
-def enqueue(topic : str , producer_id : int , message : str):
+def enqueue():
     topic: str = request.args.get('topic', type=str)
     producer_id: int = request.args.get('producer_id', type=int)
     message: str = request.args.get('message', type=str)

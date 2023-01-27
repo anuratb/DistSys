@@ -26,7 +26,6 @@ class Queue:
     # Key: TopicID, Value: An array of messages
     glob_lck = threading.Lock()
     queue = {
-        0: []
     }
     # Topic-wise locks
     # Key: TopicID, Value: lock
