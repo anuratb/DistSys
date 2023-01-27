@@ -90,6 +90,7 @@ def hello1():
 def hello2():
     try:
         msg = Queue.dequeue('News', 0)
+
     except Exception as err:
         return err.args[0]
 
@@ -132,7 +133,9 @@ def testp():
     return "Success "+str(c)
 app.app_context().push()
 if(Load_from_db):load_from_db()
-else:db.create_all()
+else:
+    Queue.clear()
+    db.create_all()
 from api import routes
 
  
