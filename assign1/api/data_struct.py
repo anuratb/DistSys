@@ -145,6 +145,7 @@ class Queue:
         lock.acquire()
         if(len(cls.queue[topicID])>0): prev_id = cls.queue[topicID][-1][0]
         cls.queue[topicID].append([nid,msg])
+        print(prev_id,cls.queue[topicID])
         #DB updates
         if(prev_id is None):
             obj = QueueDB(id = nid,value=msg)
@@ -192,7 +193,7 @@ class Queue:
             obj.offset+=1
             db.session.commit()
             lock.release()
-            return msg
+            return msg[1]
         else:
             lock.release()
             raise Exception("There are no new messages!")

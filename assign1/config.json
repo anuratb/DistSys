@@ -1,5 +1,5 @@
 {
-    "DB_URI": "postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/test1",
+    "DB_URI": "postgresql+psycopg2://anindya:abcd@127.0.0.1:5432/anurat",
     "SECRET_KEY": "5791628bb0b13ce0c676dfde280ba245",
     "LOAD_FROM_DB": true
 }

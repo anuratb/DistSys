@@ -63,7 +63,7 @@ def load_from_db():
         #Construct the queue for the given topic
         while(cur is not None):
             obj = QueueDB.query.filter_by(id=cur).first()
-            Queue.queue[topic.id].append(obj.value)
+            Queue.queue[topic.id].append([obj.id,obj.value])
             if(cur==lst):break
             cur = obj.nxt_id
         #construct the producers
@@ -76,6 +76,7 @@ def load_from_db():
     Queue.cntProd = Producer.query.count()
     Queue.cntCons = Consumer.query.count()
     Queue.cntMessage = QueueDB.query.count()
+    print(Queue.queue)
 
 
 # a simple page that says hello
