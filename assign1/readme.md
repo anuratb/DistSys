@@ -4,9 +4,12 @@
 ### Set up Postgresql:
 - Install using `apt install postgresql postgresql-contrib`
 - Check status `service postgresql status`
+- login as postgres `sudo -i -u postgres`
+- Create Role `createuser --interactive`
 - login as superuser `sudo -u postgres psql`
 - Create Database `create database <database_name>`
-- One may also create a custom user define password for it
+- Login as `sudo -i -u <usernmae> psql`
+- One may also create a custom user define password for it using `\password`
 - To get connection info use `\conninfo`
 
 ### Configuration
