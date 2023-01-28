@@ -1,5 +1,7 @@
 import requests
+
 class MyQueue:
+    
     def __init__(self,url:str):
         self.url = url
     def createTopic(self,topicName:str):
@@ -15,6 +17,7 @@ class MyQueue:
 
         except Exception as e:
             return -1
+
     def get_all_topics(self):
         try:
             res = requests.get(self.url+"/topics")
@@ -45,6 +48,7 @@ class MyQueue:
 
         except Exception as e:
             return -1
+
     def createConsumer(self,topicNames:list(str)):
         try:
             ids = {}
@@ -64,16 +68,19 @@ class MyQueue:
 
         except Exception as e:
             return -1
+
     class Topic:
         def __init__(self,outer,topicName:str):
             self.topicName = topicName
             self.outer = outer
 
     class Producer:
+
         def __init__(self,outer,pids:dict):
             #self.topicName = topicName
             self.pids = pids
             self.outer = outer
+
         def enqueue(self,msg:str,topicName:str):
             if(topicName not in self.pids.keys()):
                 return "Error: Topic not registered"
@@ -95,10 +102,12 @@ class MyQueue:
                 return -1
 
     class Consumer:
+
         def __init__(self,outer,cids:dict):
             #self.topicName = topicName
             self.cids = cids
             self.outer = outer
+
         def dequeue(self,topicName:str):
             if(topicName not in self.cids.keys()):
                 return "Error: Topic not registered"
@@ -117,6 +126,7 @@ class MyQueue:
                     return res.json.get("message")
             except Exception as e:
                 return -1
+
         def getSize(self,topicName):
             if(topicName not in self.cids.keys()):
                 return "Error: Topic not registered"

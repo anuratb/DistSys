@@ -6,13 +6,9 @@ class TopicNode:
     def __init__(self, topicID_):
         self.topicID = topicID_
         self.producerList = [0, 1] # List of subscribed producers
-        self.plock = {
-            0: threading.Lock()
-        }
+        self.plock = threading.Lock() # Lock for producerList
         self.consumerList = [0, 1] # List of subscribed consumers
-        self.clock = {
-            0: threading.Lock()
-        }
+        self.clock = threading.Lock() # Lock for consumerList
         
     def subscribeProducer(self, producerID_):
         self.producerList.append(producerID_)
@@ -22,31 +18,29 @@ class TopicNode:
 
 
 class Queue:
+    glob_lck = threading.Lock()
     # topic-wise message queues
     # Key: TopicID, Value: An array of messages
-    glob_lck = threading.Lock()
-    queue = {
-    }
+    queue = {}
     # Topic-wise locks
     # Key: TopicID, Value: lock
-    locks = {
-       # 0: threading.Lock()
-    }
+    locks = {}
     # Key: topicname, Value: TopicNode
-    topics = {
-        #'A': TopicNode(0)
-    }
+    topics = {}
     # Key: Consumer ID, Value: {offset in the topic queue, lock}
-    consumers = {
-       # 0: [0, threading.Lock()],
-       # 1: [0, threading.Lock()]
-    }
+    consumers = {}
+    cntConsLock = threading.Lock()
     cntCons = 0
+    cntProdLock = threading.Lock()
     cntProd = 0
+    cntMessageLock = threading.Lock()
     cntMessage = 0
+
     @classmethod
     def clear(cls):
         cls.glob_lck = threading.Lock()
+        cls.cntConsLock = threading.Lock()
+        cls.cntProdLock = threading.Lock()
         cls.queue = {}
         # Topic-wise locks
         # Key: TopicID, Value: lock
@@ -55,18 +49,19 @@ class Queue:
         cls.topics = {}
         # Key: Consumer ID, Value: {offset in the topic queue, lock}
         cls.consumers = {}
-        cls.cntCons=0
-        cls.cntMessage=0
+        cls.cntCons = 0
+        cls.cntMessage = 0
         cls.cntProd = 0
+
     @classmethod
     def createTopic(cls, topicName):
         if topicName in cls.topics.keys():
             raise Exception('Topicname: {} already exists'.format(topicName))
         cls.glob_lck.acquire()
         nid  = len(cls.topics)
-        cls.topics[topicName] = TopicNode(nid)
         cls.queue[nid] = []
         cls.locks[nid] = threading.Lock()
+        cls.topics[topicName] = TopicNode(nid)
         #db updates
         db.session.add(Topics(id=nid,value=topicName))
         db.session.commit()
@@ -78,42 +73,54 @@ class Queue:
 
     @classmethod
     def registerConsumer(cls, topicName):
-        if not topicName in cls.topics.keys():
+        if topicName not in cls.topics.keys():
             raise Exception('Topicname: {} does not exists'.format(topicName))
-        topicID = cls.topics[topicName].topicID
-        lock = cls.locks[topicID]
-        lock.acquire()
+
+        cls.cntConsLock.acquire()
         nid = cls.cntCons
-        cls.cntCons+=1
-        cls.topics[topicName].consumerList.append(nid)
-        cls.consumers[nid]=[nid,threading.Lock()]
+        cls.cntCons += 1
+        cls.cntConsLock.release()
+
+        topic = cls.topics[topicName]
+        clock = topic.clock
+
+        clock.acquire()
+        topic.consumerList.append(nid)
+        cls.consumers[nid] = [nid, threading.Lock()]
+
         #db updates
-        obj = Consumer(id=nid,offset=0)
-        cur = Topics.query.filter_by(id=topicID).first()
+        obj = Consumer(id=nid, offset=0)
+        cur = Topics.query.filter_by(id=topic.topicID).first()
         cur.consumers.append(obj)
         db.session.add(obj)
         db.session.commit()
-        lock.release()
+        clock.release()
+
         return nid
             
     @classmethod
     def registerProducer(cls, topicName):
         if topicName not in cls.topics.keys():
             cls.createTopic(topicName)
-        topicID = cls.topics[topicName].topicID
-        lock = cls.locks[topicID]
-        lock.acquire()
+        
+        cls.cntProdLock.acquire()
         nid = cls.cntProd
-        cls.cntProd+=1
-        cls.topics[topicName].producerList.append(nid)
+        cls.cntProd += 1
+        cls.cntProdLock.release()
+
+        topic = cls.topics[topicName]
+        plock = topic.plock
+
+        plock.acquire()
+        topic.producerList.append(nid)
         #db updates
-        print(topicID)
         obj = Producer(id=nid)
-        cur = Topics.query.filter_by(id=topicID).first()
+        cur = Topics.query.filter_by(id=topic.topicID).first()
         cur.producers.append(obj)
         db.session.add(obj)
         db.session.commit()
-        lock.release()
+        plock.release()
+
         return nid
 
     @classmethod

@@ -46,8 +46,10 @@ def create_app(test_config = None):
     return app, db
 
 app, db = create_app('./config.json')
+
 from api.data_struct import TopicNode,Queue
 from api.models import QueueDB,Topics,Producer,Consumer
+
 def load_from_db():
     print('Loading from db')
     Queue.clear()
@@ -74,6 +76,8 @@ def load_from_db():
     Queue.cntProd = Producer.query.count()
     Queue.cntCons = Consumer.query.count()
     Queue.cntMessage = QueueDB.query.count()
+
+
 # a simple page that says hello
 @app.route('/hello1')
 def hello1():
@@ -131,11 +135,14 @@ def testp():
         return err.args[0]
 
     return "Success "+str(c)
+
 app.app_context().push()
+
 if(Load_from_db):load_from_db()
 else:
     Queue.clear()
     db.create_all()
+    
 from api import routes
 
  
