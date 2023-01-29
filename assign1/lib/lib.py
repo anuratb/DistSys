@@ -4,70 +4,73 @@ class MyQueue:
     
     def __init__(self,url:str):
         self.url = url
+
     def createTopic(self,topicName:str):
         try:
-            
+   
             res = requests.post(self.url+"/topics",{
                 "name":topicName
             })
             if(res.json().get("status")=="success"):
                 return self.Topic(self,topicName)
             else:
-                return -1
+                raise Exception(res.json().get("message"))
 
-        except Exception as e:
-            return -1
+        except Exception as err:
+            return err[0]
 
     def get_all_topics(self):
         try:
             res = requests.get(self.url+"/topics")
             if(res.json().get("status")=="Success"):
-                return res.json().get("topic_string")
+                return res.json().get("topics")
             else:
-                return -1
-        except Exception as e:
-            return -1
+                raise Exception(res.json().get("message"))
+        except Exception as err:
+            return err[0]
 
 
     def createProducer(self,topicNames:list(str)):
         try:
             ids = {}
             for topicName in topicNames:
-
+                # Check if producer is already registered in topicName
+                if topicName in ids: continue
                 res = requests.post(
                     self.url+"/producer/register",
                     {
                         "topic":topicName
                     })
                 if(res.json().get("status")!="Success"):
-                    return res.json().get("message")
+                    raise Exception(res.json().get("message"))
                 else:
                     pid = res.json().get("producer_id")
                     ids[topicName] = pid
             return self.Producer(self,ids)                
 
-        except Exception as e:
-            return -1
+        except Exception as err:
+            return err[0]
 
     def createConsumer(self,topicNames:list(str)):
         try:
             ids = {}
             for topicName in topicNames:
-
+                # Check if consumer is already registered in topicName
+                if topicName in ids: continue
                 res = requests.post(
                     self.url+"/consumer/register",
                     {
                         "topic":topicName
                     })
                 if(res.json().get("status")!="Success"):
-                    return res.json().get("message")
+                    raise Exception(res.json().get("message"))
                 else:
                     cid = res.json().get("consumer_id")
                     ids[topicName] = cid
             return self.Consumer(self,ids)                
 
-        except Exception as e:
-            return -1
+        except Exception as err:
+            raise err[0]
 
     class Topic:
         def __init__(self,outer,topicName:str):
@@ -76,14 +79,32 @@ class MyQueue:
 
     class Producer:
 
-        def __init__(self,outer,pids:dict):
+        def __init__(self,outer, pids:dict):
             #self.topicName = topicName
             self.pids = pids
             self.outer = outer
 
+        def registerTopic(self, topicName: str):
+            try:
+                # Check if producer is already registered in topicName
+                if topicName in self.pids: return
+                res = requests.post(
+                    self.url+"/producer/register",
+                    {
+                        "topic": topicName
+                    }
+                )
+                if(res.json().get("status") != "Success"):
+                    raise Exception(res.json().get("message"))
+                else:
+                    pid = res.json().get("producer_id")
+                    self.pids[topicName] = pid
+            except Exception as err:
+                return err[0]
+
         def enqueue(self,msg:str,topicName:str):
             if(topicName not in self.pids.keys()):
-                return "Error: Topic not registered"
+                raise Exception("Error: Topic not registered")
             try:
                 id = self.pids[topicName]
                 res = requests.post(
@@ -97,9 +118,9 @@ class MyQueue:
                 if(res.json().get("status")=="Success"):
                     return 0
                 else:
-                    return res.json.get("message")
-            except Exception as e:
-                return -1
+                    raise Exception(res.json.get("message"))
+            except Exception as err:
+                return err[0]
 
     class Consumer:
 
@@ -108,9 +129,28 @@ class MyQueue:
             self.cids = cids
             self.outer = outer
 
+        # Used to register for a topic
+        def registerTopic(self, topicName: str):
+            try:
+                # Check if producer is already registered in topicName
+                if topicName in self.cids: return
+                res = requests.post(
+                    self.url+"/consumer/register",
+                    {
+                        "topic": topicName
+                    }
+                )
+                if(res.json().get("status") != "Success"):
+                    raise Exception(res.json().get("message"))
+                else:
+                    cid = res.json().get("consumer_id")
+                    self.cids[topicName] = cid
+            except Exception as err:
+                return err[0]
+
         def dequeue(self,topicName:str):
             if(topicName not in self.cids.keys()):
-                return "Error: Topic not registered"
+                raise Exception("Error: Topic not registered")
             try:
                 id = self.cids[topicName]
                 res = requests.post(
@@ -123,13 +163,13 @@ class MyQueue:
                 if(res.json().get("status")=="Success"):
                     return 0
                 else:
-                    return res.json.get("message")
-            except Exception as e:
-                return -1
+                    raise Exception(res.json.get("message"))
+            except Exception as err:
+                return err[0]
 
         def getSize(self,topicName):
             if(topicName not in self.cids.keys()):
-                return "Error: Topic not registered"
+                raise Exception("Error: Topic not registered")
             try:
                 res = requests.get(
                     self.outer.url+"/size",
@@ -141,9 +181,9 @@ class MyQueue:
                 if(res.json().get("status")=="Success"):
                     return int(res.json().get("size"))
                 else:
-                    return str(res.json().get("message"))
+                    raise Exception(str(res.json().get("message")))
                 
-            except Exception as e:
-                return -1
+            except Exception as err:
+                return err[0]
 
 
