@@ -32,13 +32,13 @@ def create_topic():
         return {
             "status" : "Success" , 
             "message" : 'Topic {} created successfully'.format(topic_name)
-            }
+        }
     
     except Exception as e: 
         return {
             "status" : "Failure" ,
-             "message" : str(e)
-            }
+            "message" : str(e)
+        }
 
 
 '''
@@ -70,13 +70,13 @@ def list_topics():
         return {
             "status" : "Success" , 
             "topics" : topic_string 
-            }
+        }
     
     except Exception as e: 
         return {
             "status" : "Failure" ,
-             "message" : str(e)
-            }
+            "message" : str(e)
+        }
 
 '''
     c. RegisterConsumer
@@ -103,7 +103,7 @@ def register_consumer():
     try:
         cid = Queue.registerConsumer(topic)
         return {
-            "status":"Sucess",
+            "status":"Success",
             "consumer_id":cid
         }
     except Exception as e:
@@ -137,7 +137,7 @@ def register_producer():
     try:
         pid = Queue.registerProducer(topic)
         return {
-            "status":"Sucess",
+            "status":"Success",
             "producer_id":pid
         }
     except Exception as e:
@@ -217,8 +217,8 @@ def dequeue():
     except Exception as e : 
         return {
             "status" : "Failure" ,
-             "message" : str(e)
-            }
+            "message" : str(e)
+        }
     
 
 '''
