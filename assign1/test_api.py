@@ -39,19 +39,19 @@ def run_test(url="http://127.0.0.1:5123"):
             cur:MyQueue.Producer = pobj[prod]
             delay = random.random()
             time.sleep(delay)
-            #print(cur.enqueue(msg,topic))
-    lck = threading.Lock()
+            cur.enqueue(msg,topic)
+   
     def consume(con):
         cur:MyQueue.Consumer = conobj[con]
         while(True):
             for topic in cons[con]:
                 delay = random.random()
                 time.sleep(delay)
-                lck.acquire()
+                
                 if(cur.getSize(topic)>0):
                     msg = cur.dequeue(topic)
                     print("Dequeued: {} by consumer {}".format(msg,con))
-                lck.release()
+             
     for file in os.listdir(path):
         nm,ext = file.split('.')
         tp,id = nm.split('_')
@@ -61,7 +61,7 @@ def run_test(url="http://127.0.0.1:5123"):
                 #print(line.split())
                 tm,msg,_,topic = line.split()
                 topic = "T"+topic[2:3]
-                prod_msg["P"+str(id)].append((msg,topic))
+                prod_msg["P"+str(id)].append((line,topic))
     print(prod_msg.keys())
     pt = []
     ct = []
@@ -71,6 +71,7 @@ def run_test(url="http://127.0.0.1:5123"):
         ct.append(threading.Thread(target=consume,args=(con,)))
     for t in pt:
         t.start()
+    
     for c in ct:
         c.start()
     for t in pt:

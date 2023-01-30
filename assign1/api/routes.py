@@ -26,9 +26,10 @@ from api.data_struct import Queue
 '''
 @ app.route("/topics", methods=['POST'])
 def create_topic():
-    topic_name : str = request.args.get('name' , type=str) 
-    print(str(request.args))
-    print("-------"+str(topic_name))
+    print(request.get_data())
+    topic_name : str = request.get_json().get('name') 
+    
+    #print("-------"+str(topic_name))
     try : 
         Queue.createTopic(topic_name) 
         return {
@@ -37,7 +38,7 @@ def create_topic():
         }
     
     except Exception as e: 
-        print(str(e))
+        #print(str(e))
         return {
             "status" : "Failure" ,
             "message" : str(e)
@@ -102,7 +103,7 @@ def list_topics():
 
 @ app.route("/consumer/register", methods=['POST'])
 def register_consumer():
-    topic = request.args.get("topic",type=str)
+    topic = request.get_json().get("topic")
     try:
         cid = Queue.registerConsumer(topic)
         return {
@@ -136,7 +137,7 @@ def register_consumer():
 
 @ app.route("/producer/register", methods=['POST'])
 def register_producer():
-    topic = request.args.get("topic",type=str)
+    topic = request.get_json().get("topic")
     try:
         pid = Queue.registerProducer(topic)
         return {
@@ -172,9 +173,9 @@ def register_producer():
 def enqueue():
     
     try:
-        topic: str = request.args.get('topic', type=str)
-        producer_id: int = request.args.get('producer_id', type=int)
-        message: str = request.args.get('message', type=str)
+        topic: str = request.get_json().get('topic')
+        producer_id: int = request.get_json().get('producer_id')
+        message: str = request.get_json().get('message')
 
         Queue.enqueue(topic, producer_id , message)
         return {

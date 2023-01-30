@@ -7,15 +7,15 @@ class MyQueue:
 
     def createTopic(self,topicName:str):
         try:
-            print(str("^^^^^^")+topicName)
-            res = requests.post(self.url+"/topics",params={
+            #print(str("^^^^^^")+topicName)
+            res = requests.post(self.url+"/topics",json={
                 "name":topicName
             })
             if(res.json().get("status")=="Success"):
                 return self.Topic(self,topicName)
             else:
-                print(str(res.json()))
-                #raise Exception(res.json().get("message"))
+                #print(str(res.json()))
+                raise Exception(res.json().get("message"))
 
         except Exception as err:
             return err[0]
@@ -39,7 +39,7 @@ class MyQueue:
                 if topicName in ids: continue
                 res = requests.post(
                     self.url+"/producer/register",
-                    params={
+                    json={
                         "topic":topicName
                     })
                 if(res.json().get("status")!="Success"):
@@ -60,7 +60,7 @@ class MyQueue:
                 if topicName in ids: continue
                 res = requests.post(
                     self.url+"/consumer/register",
-                    params={
+                    json={
                         "topic":topicName
                     })
                 if(res.json().get("status")!="Success"):
@@ -91,7 +91,7 @@ class MyQueue:
                 if topicName in self.pids: return
                 res = requests.post(
                     self.url+"/producer/register",
-                    params={
+                    json={
                         "topic": topicName
                     }
                 )
@@ -110,7 +110,7 @@ class MyQueue:
                 id = self.pids[topicName]
                 res = requests.post(
                     self.outer.url+"/producer/produce",
-                    params={
+                    json={
                         "topic":topicName,
                         "producer_id":id,
                         "message":msg
@@ -137,7 +137,7 @@ class MyQueue:
                 if topicName in self.cids: return
                 res = requests.post(
                     self.url+"/consumer/register",
-                    params={
+                    json={
                         "topic": topicName
                     }
                 )
