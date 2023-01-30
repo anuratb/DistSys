@@ -18,7 +18,7 @@ class MyQueue:
                 raise Exception(res.json().get("message"))
 
         except Exception as err:
-            return err[0]
+            return str(err)
 
     def get_all_topics(self):
         try:
@@ -28,7 +28,7 @@ class MyQueue:
             else:
                 raise Exception(res.json().get("message"))
         except Exception as err:
-            return err[0]
+            return str(err)
 
 
     def createProducer(self,topicNames:list):
@@ -50,7 +50,7 @@ class MyQueue:
             return self.Producer(self,ids)                
 
         except Exception as err:
-            return err[0]
+            return str(err)
 
     def createConsumer(self,topicNames:list):
         try:
@@ -71,7 +71,7 @@ class MyQueue:
             return self.Consumer(self,ids)                
 
         except Exception as err:
-            raise err[0]
+            raise str(err)
 
     class Topic:
         def __init__(self,outer,topicName:str):
@@ -101,7 +101,7 @@ class MyQueue:
                     pid = res.json().get("producer_id")
                     self.pids[topicName] = pid
             except Exception as err:
-                return err[0]
+                return str(err)
 
         def enqueue(self,msg:str,topicName:str):
             if(topicName not in self.pids.keys()):
@@ -121,7 +121,7 @@ class MyQueue:
                 else:
                     raise Exception(res.json.get("message"))
             except Exception as err:
-                return err[0]
+                return str(err)
 
     class Consumer:
 
@@ -147,7 +147,7 @@ class MyQueue:
                     cid = res.json().get("consumer_id")
                     self.cids[topicName] = cid
             except Exception as err:
-                return err[0]
+                return str(err)
 
         def dequeue(self,topicName:str):
             if(topicName not in self.cids.keys()):
@@ -166,7 +166,7 @@ class MyQueue:
                 else:
                     raise Exception(res.json.get("message"))
             except Exception as err:
-                return err[0]
+                return str(err)
 
         def getSize(self,topicName):
             if(topicName not in self.cids.keys()):
@@ -185,6 +185,6 @@ class MyQueue:
                     raise Exception(str(res.json().get("message")))
                 
             except Exception as err:
-                return err[0]
+                return str(err)
 
 
