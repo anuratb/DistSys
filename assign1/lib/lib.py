@@ -7,14 +7,15 @@ class MyQueue:
 
     def createTopic(self,topicName:str):
         try:
-   
-            res = requests.post(self.url+"/topics",{
+            print(str("^^^^^^")+topicName)
+            res = requests.post(self.url+"/topics",params={
                 "name":topicName
             })
-            if(res.json().get("status")=="success"):
+            if(res.json().get("status")=="Success"):
                 return self.Topic(self,topicName)
             else:
-                raise Exception(res.json().get("message"))
+                print(str(res.json()))
+                #raise Exception(res.json().get("message"))
 
         except Exception as err:
             return err[0]
@@ -30,7 +31,7 @@ class MyQueue:
             return err[0]
 
 
-    def createProducer(self,topicNames:list(str)):
+    def createProducer(self,topicNames:list):
         try:
             ids = {}
             for topicName in topicNames:
@@ -38,7 +39,7 @@ class MyQueue:
                 if topicName in ids: continue
                 res = requests.post(
                     self.url+"/producer/register",
-                    {
+                    params={
                         "topic":topicName
                     })
                 if(res.json().get("status")!="Success"):
@@ -51,7 +52,7 @@ class MyQueue:
         except Exception as err:
             return err[0]
 
-    def createConsumer(self,topicNames:list(str)):
+    def createConsumer(self,topicNames:list):
         try:
             ids = {}
             for topicName in topicNames:
@@ -59,7 +60,7 @@ class MyQueue:
                 if topicName in ids: continue
                 res = requests.post(
                     self.url+"/consumer/register",
-                    {
+                    params={
                         "topic":topicName
                     })
                 if(res.json().get("status")!="Success"):
@@ -90,7 +91,7 @@ class MyQueue:
                 if topicName in self.pids: return
                 res = requests.post(
                     self.url+"/producer/register",
-                    {
+                    params={
                         "topic": topicName
                     }
                 )
@@ -109,7 +110,7 @@ class MyQueue:
                 id = self.pids[topicName]
                 res = requests.post(
                     self.outer.url+"/producer/produce",
-                    {
+                    params={
                         "topic":topicName,
                         "producer_id":id,
                         "message":msg
@@ -136,7 +137,7 @@ class MyQueue:
                 if topicName in self.cids: return
                 res = requests.post(
                     self.url+"/consumer/register",
-                    {
+                    params={
                         "topic": topicName
                     }
                 )
@@ -153,15 +154,15 @@ class MyQueue:
                 raise Exception("Error: Topic not registered")
             try:
                 id = self.cids[topicName]
-                res = requests.post(
+                res = requests.get(
                     self.outer.url+"/consumer/consume",
-                    {
+                    params={
                         "topic":topicName,
                         "consumer_id":id
                     }
                 )
                 if(res.json().get("status")=="Success"):
-                    return 0
+                    return res.json().get("message")
                 else:
                     raise Exception(res.json.get("message"))
             except Exception as err:
@@ -173,7 +174,7 @@ class MyQueue:
             try:
                 res = requests.get(
                     self.outer.url+"/size",
-                    {
+                    params={
                         "topic":topicName,
                         "consumer_id":self.cids[topicName]
                     }
