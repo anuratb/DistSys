@@ -27,6 +27,8 @@ from api.data_struct import Queue
 @ app.route("/topics", methods=['POST'])
 def create_topic():
     topic_name : str = request.args.get('name' , type=str) 
+    print(str(request.args))
+    print("-------"+str(topic_name))
     try : 
         Queue.createTopic(topic_name) 
         return {
@@ -35,6 +37,7 @@ def create_topic():
         }
     
     except Exception as e: 
+        print(str(e))
         return {
             "status" : "Failure" ,
             "message" : str(e)
@@ -167,11 +170,12 @@ def register_producer():
 
 @ app.route("/producer/produce", methods=['POST'])
 def enqueue():
-    topic: str = request.args.get('topic', type=str)
-    producer_id: int = request.args.get('producer_id', type=int)
-    message: str = request.args.get('message', type=str)
-
+    
     try:
+        topic: str = request.args.get('topic', type=str)
+        producer_id: int = request.args.get('producer_id', type=int)
+        message: str = request.args.get('message', type=str)
+
         Queue.enqueue(topic, producer_id , message)
         return {
             "status": "Success",
@@ -204,14 +208,15 @@ def enqueue():
 
 @ app.route("/consumer/consume", methods=['GET'])
 def dequeue():
-    topic: str = request.args.get('topic', type=str)
-    consumer_id: int = request.args.get('consumer_id', type=int)
-
+    
     try :
-        Queue.dequeue(topic, consumer_id)
+        topic: str = request.args.get('topic', type=str)
+        consumer_id: int = request.args.get('consumer_id', type=int)
+
+        msg = Queue.dequeue(topic, consumer_id)
         return {
             "status": "Success",
-            "message": f"Topic {topic} dequed for consumer {consumer_id}!!"
+            "message": msg
         }
 
     except Exception as e : 
