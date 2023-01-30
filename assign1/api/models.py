@@ -14,7 +14,7 @@ class QueueDB(db.Model):
     
 class Topics(db.Model):
     id = db.Column(db.Integer,primary_key=True)
-    value = db.Column(db.String,primary_key = False)
+    value = db.Column(db.String,primary_key = False,nullable=False)
     start_ind = db.Column(db.Integer,nullable=True)
     end_ind = db.Column(db.Integer,nullable=True)
     producers = db.relationship('Producer',backref='topic',lazy=True)
