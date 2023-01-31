@@ -7,18 +7,18 @@ class MyQueue:
 
     def createTopic(self,topicName:str):
         try:
-            print(str("^^^^^^")+topicName)
-            res = requests.post(self.url+"/topics",params={
+            #print(str("^^^^^^")+topicName)
+            res = requests.post(self.url+"/topics",json={
                 "name":topicName
             })
             if(res.json().get("status")=="Success"):
                 return self.Topic(self,topicName)
             else:
-                print(str(res.json()))
-                #raise Exception(res.json().get("message"))
+                #print(str(res.json()))
+                raise Exception(res.json().get("message"))
 
         except Exception as err:
-            return err[0]
+            return str(err)
 
     def get_all_topics(self):
         try:
@@ -28,7 +28,7 @@ class MyQueue:
             else:
                 raise Exception(res.json().get("message"))
         except Exception as err:
-            return err[0]
+            return str(err)
 
 
     def createProducer(self,topicNames:list):
@@ -39,7 +39,7 @@ class MyQueue:
                 if topicName in ids: continue
                 res = requests.post(
                     self.url+"/producer/register",
-                    params={
+                    json={
                         "topic":topicName
                     })
                 if(res.json().get("status")!="Success"):
@@ -50,7 +50,7 @@ class MyQueue:
             return self.Producer(self,ids)                
 
         except Exception as err:
-            return err[0]
+            return str(err)
 
     def createConsumer(self,topicNames:list):
         try:
@@ -60,7 +60,7 @@ class MyQueue:
                 if topicName in ids: continue
                 res = requests.post(
                     self.url+"/consumer/register",
-                    params={
+                    json={
                         "topic":topicName
                     })
                 if(res.json().get("status")!="Success"):
@@ -71,7 +71,7 @@ class MyQueue:
             return self.Consumer(self,ids)                
 
         except Exception as err:
-            raise err[0]
+            raise str(err)
 
     class Topic:
         def __init__(self,outer,topicName:str):
@@ -91,7 +91,7 @@ class MyQueue:
                 if topicName in self.pids: return
                 res = requests.post(
                     self.url+"/producer/register",
-                    params={
+                    json={
                         "topic": topicName
                     }
                 )
@@ -101,7 +101,7 @@ class MyQueue:
                     pid = res.json().get("producer_id")
                     self.pids[topicName] = pid
             except Exception as err:
-                return err[0]
+                return str(err)
 
         def enqueue(self,msg:str,topicName:str):
             if(topicName not in self.pids.keys()):
@@ -110,7 +110,7 @@ class MyQueue:
                 id = self.pids[topicName]
                 res = requests.post(
                     self.outer.url+"/producer/produce",
-                    params={
+                    json={
                         "topic":topicName,
                         "producer_id":id,
                         "message":msg
@@ -121,7 +121,7 @@ class MyQueue:
                 else:
                     raise Exception(res.json.get("message"))
             except Exception as err:
-                return err[0]
+                return str(err)
 
     class Consumer:
 
@@ -137,7 +137,7 @@ class MyQueue:
                 if topicName in self.cids: return
                 res = requests.post(
                     self.url+"/consumer/register",
-                    params={
+                    json={
                         "topic": topicName
                     }
                 )
@@ -147,7 +147,7 @@ class MyQueue:
                     cid = res.json().get("consumer_id")
                     self.cids[topicName] = cid
             except Exception as err:
-                return err[0]
+                return str(err)
 
         def dequeue(self,topicName:str):
             if(topicName not in self.cids.keys()):
@@ -166,7 +166,7 @@ class MyQueue:
                 else:
                     raise Exception(res.json.get("message"))
             except Exception as err:
-                return err[0]
+                return str(err)
 
         def getSize(self,topicName):
             if(topicName not in self.cids.keys()):
@@ -185,6 +185,6 @@ class MyQueue:
                     raise Exception(str(res.json().get("message")))
                 
             except Exception as err:
-                return err[0]
+                return str(err)
 
 

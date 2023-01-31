@@ -55,7 +55,7 @@ class Queue:
 
     @classmethod
     def createTopic(cls, topicName):
-        print("---->"+str(topicName))
+        #print("---->"+str(topicName))
         if topicName in cls.topics.keys():
             raise Exception('Topicname: {} already exists'.format(topicName))
         cls.glob_lck.acquire()
@@ -101,7 +101,7 @@ class Queue:
             
     @classmethod
     def registerProducer(cls, topicName):
-        print("registering"+ topicName)
+        #print("registering"+ topicName)
         if topicName not in cls.topics.keys():
             cls.createTopic(topicName)
         
@@ -147,7 +147,7 @@ class Queue:
         lock.acquire()
         if(len(cls.queue[topicID])>0): prev_id = cls.queue[topicID][-1][0]
         cls.queue[topicID].append([nid,msg])
-        print(prev_id,cls.queue[topicID])
+        #print(prev_id,cls.queue[topicID])
         #DB updates
         if(prev_id is None):
             obj = QueueDB(id = nid,value=msg)

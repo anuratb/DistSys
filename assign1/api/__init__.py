@@ -19,7 +19,7 @@ def create_app(test_config = None):
         app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
     else:
         obj = json.load(open(test_config))
-        #print(obj["LOAD_FROM_DB"])
+        ##print(obj["LOAD_FROM_DB"])
         if(obj["LOAD_FROM_DB"]):
             global Load_from_db
             Load_from_db = True
@@ -51,7 +51,7 @@ from api.data_struct import TopicNode,Queue
 from api.models import QueueDB,Topics,Producer,Consumer
 
 def load_from_db():
-    print('Loading from db')
+    #print('Loading from db')
     Queue.clear()
     Queue.glob_lck = threading.Lock()
     for topic in Topics.query.all():
@@ -76,7 +76,7 @@ def load_from_db():
     Queue.cntProd = Producer.query.count()
     Queue.cntCons = Consumer.query.count()
     Queue.cntMessage = QueueDB.query.count()
-    print(Queue.queue)
+    #print(Queue.queue)
 
 
 # a simple page that says hello
