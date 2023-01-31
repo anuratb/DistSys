@@ -17,7 +17,12 @@ def run_test(url="http://127.0.0.1:5123"):
         prods_ = line[1].split()
         cons_ = line[2].split()
         print(topic)
-        Q.createTopic(topic)
+        while(True):
+            try:
+                Q.createTopic(topic)
+                break
+            except:
+                continue
         topics.append(topic)
         for prod in prods_:
             if(prod not in prods.keys()): prods[prod] = []
@@ -28,30 +33,51 @@ def run_test(url="http://127.0.0.1:5123"):
     pobj = {}
     conobj = {}
     print(prods.keys())
-    for prod,topics in prods.items():
-        pobj[prod] = Q.createProducer(topics)
-    for con,topics in cons.items():
-        conobj[con] = Q.createConsumer(topics)
+    while(True):
+        try:
+            for prod,topics in prods.items():
+                pobj[prod] = Q.createProducer(topics)
+            for con,topics in cons.items():
+                conobj[con] = Q.createConsumer(topics)
+            break
+        except:
+            continue
     
     prod_msg = {}
     def produce(prod):
         print("Running Pthread "+str(prod_msg[prod][:5]))
+        i = 0
+        while(i<len(prod_msg[prod])):
+            try:
+                msg,topic = prod_msg[prod][i]
+                cur:MyQueue.Producer = pobj[prod]
+                delay = random.random()
+                time.sleep(delay)
+                cur.enqueue(msg,topic)
+                i+=1
+            except:
+                continue
+        '''
         for msg,topic in prod_msg[prod]:
             cur:MyQueue.Producer = pobj[prod]
             delay = random.random()
             time.sleep(delay)
             cur.enqueue(msg,topic)
-   
+        '''
     def consume(con):
         cur:MyQueue.Consumer = conobj[con]
         while(True):
-            for topic in cons[con]:
-                delay = random.random()
-                time.sleep(delay)
+            try:
+                for topic in cons[con]:
+                    delay = random.random()
+                    time.sleep(delay)
+                    
+                    if(cur.getSize(topic)>0):
+                        msg = cur.dequeue(topic)
+                        print("Dequeued: {} by consumer {}".format(msg,con))
                 
-                if(cur.getSize(topic)>0):
-                    msg = cur.dequeue(topic)
-                    print("Dequeued: {} by consumer {}".format(msg,con))
+            except:
+                continue
              
     for file in os.listdir(path):
         nm,ext = file.split('.')
