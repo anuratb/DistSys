@@ -105,7 +105,7 @@ class MyQueue:
 
         def enqueue(self,msg:str,topicName:str):
             if(topicName not in self.pids.keys()):
-                raise Exception("Error: Topic not registered")
+                raise Exception("Error: Topic {} not registered".format(topicName))
             try:
                 id = self.pids[topicName]
                 res = requests.post(

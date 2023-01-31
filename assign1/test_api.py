@@ -4,7 +4,8 @@ import threading
 import random,time
 def run_test(url="http://127.0.0.1:5123"):
     Q = MyQueue(url)
-    fp = open("./test_asgn1/prod_cons.txt")
+    path = "./test_asgn2"
+    fp = open(path+"/prod_cons.txt")
     topics = []
     prods = {}
     cons = {}
@@ -31,7 +32,7 @@ def run_test(url="http://127.0.0.1:5123"):
         pobj[prod] = Q.createProducer(topics)
     for con,topics in cons.items():
         conobj[con] = Q.createConsumer(topics)
-    path = "./test_asgn1"
+    
     prod_msg = {}
     def produce(prod):
         print("Running Pthread "+str(prod_msg[prod][:5]))

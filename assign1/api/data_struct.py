@@ -87,7 +87,7 @@ class Queue:
 
         clock.acquire()
         topic.consumerList.append(nid)
-        cls.consumers[nid] = [nid, threading.Lock()]
+        cls.consumers[nid] = [0, threading.Lock()]
 
         #db updates
         obj = Consumer(id=nid, offset=0)
@@ -208,5 +208,6 @@ class Queue:
         # Check if user is registered for the topic
         if conID not in cls.topics.get(topicName).consumerList:
             raise Exception("Error: Invalid consumer ID!")
+        print(topicName,conID,cls.consumers.get(conID)[0],cls.queue[cls.topics[topicName].topicID])
         return len(cls.queue[cls.topics[topicName].topicID])-cls.consumers.get(conID)[0]
         
