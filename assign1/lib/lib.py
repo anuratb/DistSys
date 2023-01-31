@@ -4,6 +4,11 @@ class MyQueue:
     
     def __init__(self,url:str):
         self.url = url
+    '''
+    Builder function to create topic
+    @param topicName 
+    @return Topic object
+    '''
 
     def createTopic(self,topicName:str):
         try:
@@ -20,6 +25,9 @@ class MyQueue:
         except Exception as err:
             return str(err)
 
+    '''
+    Method To get all Topics
+    '''
     def get_all_topics(self):
         try:
             res = requests.get(self.url+"/topics")
@@ -30,7 +38,11 @@ class MyQueue:
         except Exception as err:
             return str(err)
 
-
+    '''
+    Builder function to create producer from topiclist
+    @param topicNames
+    @return Producer Object
+    '''
     def createProducer(self,topicNames:list):
         try:
             ids = {}
@@ -51,7 +63,11 @@ class MyQueue:
 
         except Exception as err:
             return str(err)
-
+    '''
+    Builder function to create consumer
+    @param topicNames
+    @return Consumer Object
+    '''
     def createConsumer(self,topicNames:list):
         try:
             ids = {}
@@ -72,19 +88,27 @@ class MyQueue:
 
         except Exception as err:
             raise str(err)
-
+    '''
+    Topic class
+    '''
     class Topic:
         def __init__(self,outer,topicName:str):
             self.topicName = topicName
             self.outer = outer
-
+    '''
+    Producer Class
+    '''
     class Producer:
 
         def __init__(self,outer, pids:dict):
             #self.topicName = topicName
             self.pids = pids
             self.outer = outer
-
+        '''
+        To add a new topic(already existing in db) to topicList of producer
+        @param topicName
+        
+        '''
         def registerTopic(self, topicName: str):
             try:
                 # Check if producer is already registered in topicName
@@ -102,7 +126,12 @@ class MyQueue:
                     self.pids[topicName] = pid
             except Exception as err:
                 return str(err)
-
+        '''
+        To enqueue a message
+        @param msg : Message
+        @param topicName: topic Name
+        returns 0 if success
+        '''
         def enqueue(self,msg:str,topicName:str):
             if(topicName not in self.pids.keys()):
                 raise Exception("Error: Topic {} not registered".format(topicName))
@@ -122,7 +151,9 @@ class MyQueue:
                     raise Exception(res.json.get("message"))
             except Exception as err:
                 return str(err)
-
+    '''
+    Consumer class
+    '''
     class Consumer:
 
         def __init__(self,outer,cids:dict):
@@ -148,7 +179,11 @@ class MyQueue:
                     self.cids[topicName] = cid
             except Exception as err:
                 return str(err)
-
+        '''
+        To dequeue from a topic subscribed by consumer
+        @param topicName
+        @return The message dequeued
+        '''
         def dequeue(self,topicName:str):
             if(topicName not in self.cids.keys()):
                 raise Exception("Error: Topic not registered")
@@ -167,7 +202,11 @@ class MyQueue:
                     raise Exception(res.json.get("message"))
             except Exception as err:
                 return str(err)
-
+        '''
+        Method to get queue size belonging to some topic name
+        @param topicName
+        @return size of the queue
+        '''
         def getSize(self,topicName):
             if(topicName not in self.cids.keys()):
                 raise Exception("Error: Topic not registered")
