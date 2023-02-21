@@ -1,9 +1,12 @@
 import threading
 from api import db
 from api.models import QueueDB,Topics,Producer,Consumer
-
+#ith 
 class Partition:
-    pass
+    def __init__(self):
+        pass
+    def next(self):
+        pass
 
 
 class TopicNode:

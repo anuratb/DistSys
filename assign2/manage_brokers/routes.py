@@ -266,3 +266,9 @@ def size():
             }
 
 
+@app.route("/addbroker",methods=["POST"])
+def addbroker():
+    pass
+
+
+
