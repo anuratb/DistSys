@@ -64,7 +64,12 @@ class Queue:
         cls.locks[nid] = threading.Lock()
         cls.topics[topicName] = TopicNode(nid)
         #db updates
+        #nid =4 ,topicName="News"
+        
+        "db.session.add(Topics(id=4,value=News))"
+        print("db.session.add(Topics(id={},value={}))".format(nid,topicName))
         db.session.add(Topics(id=nid,value=topicName))
+        #----------
         db.session.commit()
         cls.glob_lck.release()
 
