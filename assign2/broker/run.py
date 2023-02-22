@@ -1,8 +1,9 @@
 from flask_migrate import Migrate
 
-from api import app, db
-
+#print(api.app.app,api.app.db)
+from api import app,db
 migrate = Migrate(app, db)
+
 
 
 if __name__ == '__main__':

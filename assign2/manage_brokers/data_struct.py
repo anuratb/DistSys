@@ -1,5 +1,6 @@
 import threading
 from api import db
+import os
 from api.models import QueueDB,Topics,Producer,Consumer
 #ith 
 class Partition:
@@ -8,7 +9,34 @@ class Partition:
     def next(self):
         pass
 
+class Broker:
+    def __init__(self,DB_URI = '',url='',name=''):
+        self.DB_URI = ''
+        self.url = ''
+        self.docker_name = ''
+class Docker:
+    def __init__(self):
+        self.cnt = 0
+        self.id ={}
+    def build_run(self,path:str):
+        curr_id = cnt
+        cnt+=1
+        db_uri = None#TODO
+        obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
+        obj = os.system("docker run {} -p 5000:5005".format("broker"+str(curr_id)))
+        url = None
+        self.id[cnt] = Broker(db_uri,url,"broker"+str(curr_id))
 
+
+
+class VM:
+    def __init__(self):
+        self.ids = []
+    #to return all vm ids
+    def get(self):
+        return self.ids
+
+        
 class TopicNode:
     
     def __init__(self, topicID_):
