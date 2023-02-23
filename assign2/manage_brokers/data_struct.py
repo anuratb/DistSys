@@ -2,6 +2,27 @@ import threading
 from api import db
 import os
 from api.models import QueueDB,Topics,Producer,Consumer
+
+
+db_username = 'anurat'
+db_password = 'abcd'
+db_host = '127.0.0.1'
+db_port = '5432'
+
+import psycopg2
+
+#establishing the connection
+
+
+#Preparing query to create a database
+
+
+#Creating a database
+
+
+
+
+
 #ith 
 class Partition:
     def __init__(self):
@@ -21,7 +42,22 @@ class Docker:
     def build_run(self,path:str):
         curr_id = cnt
         cnt+=1
-        db_uri = None#TODO
+        broker_nme = "broker"+str(cnt)
+
+        ##############Create Database#######################
+        conn = psycopg2.connect(
+            user=db_username, password=db_password, host=db_host, port= db_port
+        )
+        conn.autocommit = True
+
+        cursor = conn.cursor()
+        sql = '''CREATE database {};'''.format(broker_nme)
+        cursor.execute(sql)
+        
+        conn.close()
+        ####################################################
+
+        db_uri = 'postgresql+psycopg2:/{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_host,broker_nme)#TODO
         obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
         obj = os.system("docker run {} -p 5000:5005".format("broker"+str(curr_id)))
         url = None
