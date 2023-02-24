@@ -1,7 +1,7 @@
 
 from flask import request
 from api import app
-from api.data_struct import Queue
+from api.data_struct import Queue,brokers
 
 '''
     a. CreateTopic
@@ -268,7 +268,12 @@ def size():
 
 @app.route("/addbroker",methods=["POST"])
 def addbroker():
-    pass
+    brokers.build_run('../broker/')
+
+
+@app.route("/removebroker",methods=["POST"])
+def addbroker():
+    brokers.build_run('../broker/')
 
 
 

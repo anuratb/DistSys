@@ -11,33 +11,42 @@ db_port = '5432'
 
 import psycopg2
 
-#establishing the connection
+
+        
+class TopicNode:
+    
+    def __init__(self, topicID_):
+        self.topicID = topicID_
+        self.producerList = [0, 1] # List of subscribed producers
+        self.plock = threading.Lock() # Lock for producerList
+        self.consumerList = [0, 1] # List of subscribed consumers
+        self.clock = threading.Lock() # Lock for consumerList
+        
+    def subscribeProducer(self, producerID_):
+        self.producerList.append(producerID_)
+    
+    def subscribeConsumer(self, consumerID_):
+        self.consumerList.append(consumerID_)
 
 
-#Preparing query to create a database
 
 
-#Creating a database
-
-
-
-
-
-#ith 
 class Partition:
-    def __init__(self):
-        pass
+    def __init__(self,topic:TopicNode):
+        self.topic = topic
+
     def next(self):
         pass
 
 class Broker:
     def __init__(self,DB_URI = '',url='',name=''):
-        self.DB_URI = ''
-        self.url = ''
-        self.docker_name = ''
+        self.DB_URI = DB_URI
+        self.url = url
+        self.docker_name = name
 class Docker:
     def __init__(self):
         self.cnt = 0
+        # Maps Docker Name to Broker Object
         self.id ={}
     def build_run(self,path:str):
         curr_id = cnt
@@ -57,7 +66,7 @@ class Docker:
         conn.close()
         ####################################################
 
-        db_uri = 'postgresql+psycopg2:/{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_host,broker_nme)#TODO
+        db_uri = 'postgresql+psycopg2:/{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_host,broker_nme)
         obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
         obj = os.system("docker run {} -p 5000:5005".format("broker"+str(curr_id)))
         url = None
@@ -71,23 +80,6 @@ class VM:
     #to return all vm ids
     def get(self):
         return self.ids
-
-        
-class TopicNode:
-    
-    def __init__(self, topicID_):
-        self.topicID = topicID_
-        self.producerList = [0, 1] # List of subscribed producers
-        self.plock = threading.Lock() # Lock for producerList
-        self.consumerList = [0, 1] # List of subscribed consumers
-        self.clock = threading.Lock() # Lock for consumerList
-        
-    def subscribeProducer(self, producerID_):
-        self.producerList.append(producerID_)
-    
-    def subscribeConsumer(self, consumerID_):
-        self.consumerList.append(consumerID_)
-
 
 class Queue:
     glob_lck = threading.Lock()
@@ -286,3 +278,6 @@ class Queue:
         print(topicName,conID,cls.consumers.get(conID)[0],cls.queue[cls.topics[topicName].topicID])
         return len(cls.queue[cls.topics[topicName].topicID])-cls.consumers.get(conID)[0]
         
+###############################GLOBALS#####################################
+
+brokers = Docker()

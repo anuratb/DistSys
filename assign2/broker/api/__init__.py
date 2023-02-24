@@ -23,8 +23,7 @@ def create_app(test_config = None):
         secret_key = obj['SECRET_KEY']
         global DB_URI
         DB_URI = obj['DB_URI']
-    if ('DB_URI' in os.environ.keys()):
-        
+    if ('DB_URI' in os.environ.keys()):        
         DB_URI = os.environ['DB_URI']
     app.config['SECRET_KEY'] = secret_key
     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
