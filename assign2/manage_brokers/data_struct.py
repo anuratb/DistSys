@@ -21,28 +21,43 @@ class TopicNode:
         self.plock = threading.Lock() # Lock for producerList
         self.consumerList = [0, 1] # List of subscribed consumers
         self.clock = threading.Lock() # Lock for consumerList
+        self.partitions = []#List of Partition Entries
+        self.cur  = 0#initialization of initial partition #TODO Anindya
         
     def subscribeProducer(self, producerID_):
         self.producerList.append(producerID_)
     
     def subscribeConsumer(self, consumerID_):
         self.consumerList.append(consumerID_)
-
-
-
-
-class Partition:
-    def __init__(self,topic:TopicNode):
-        self.topic = topic
-
+    #Return next partition id to be appended 
+    #Remember we also need to update self.cur
+    #TODO Anindya
     def next(self):
         pass
+
+
+
+
 
 class Broker:
     def __init__(self,DB_URI = '',url='',name=''):
         self.DB_URI = DB_URI
         self.url = url
         self.docker_name = name
+
+class PartitionEntry:
+    cnt = 0
+    def __init__(self,topic:TopicNode,broker:Broker):
+        self.topic = topic
+        self.id = cnt
+        self.broker = broker
+        #local topic name for broker to maintain uniqueness
+        self.local_topic_name = str(topic.topicID)+'#'+str(broker.docker_name)
+        cnt+=1
+
+    def next(self):
+        pass
+
 class Docker:
     def __init__(self):
         self.cnt = 0
@@ -73,13 +88,14 @@ class Docker:
         self.id[cnt] = Broker(db_uri,url,"broker"+str(curr_id))
 
 
-
+'''
 class VM:
     def __init__(self):
         self.ids = []
     #to return all vm ids
     def get(self):
         return self.ids
+'''
 
 class Queue:
     glob_lck = threading.Lock()
