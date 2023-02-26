@@ -1,7 +1,8 @@
 
-from flask import request
+from flask import request, redirect, url_for, make_response
 from api import app
-from api.data_struct import Queue,brokers
+from .data_struct import brokers, Manager
+
 
 '''
     a. CreateTopic
@@ -26,19 +27,15 @@ from api.data_struct import Queue,brokers
 '''
 @ app.route("/topics", methods=['POST'])
 def create_topic():
-    print(request.get_data())
-    topic_name : str = request.get_json().get('name') 
-    
-    #print("-------"+str(topic_name))
-    try : 
-        Queue.createTopic(topic_name) 
+    topic_name : str = request.get_json().get('name')
+    try:
+        Manager.topicMetaData.addTopic(topic_name)
         return {
             "status" : "Success" , 
             "message" : 'Topic {} created successfully'.format(topic_name)
         }
     
     except Exception as e: 
-        #print(str(e))
         return {
             "status" : "Failure" ,
             "message" : str(e)
@@ -64,11 +61,8 @@ def create_topic():
 @ app.route("/topics", methods=['GET'])
 def list_topics():
     try : 
-        topic_list = Queue.listTopics()
-        topic_string : str = ""
-
-        for topic in topic_list.keys() :
-            topic_string += topic + ", "
+        topic_list = Manager.topicMetaData.getTopicsList()
+        topic_string : str = ", ".join(topic_list)
         
         return {
             "status" : "Success" , 
@@ -103,12 +97,19 @@ def list_topics():
 @ app.route("/consumer/register", methods=['POST'])
 def register_consumer():
     topic = request.get_json().get("topic")
+    partition = request.get_json().get("partition")
     try:
-        cid = Queue.registerConsumer(topic)
-        return {
-            "status":"Success",
-            "consumer_id":cid
-        }
+        if partition:
+            brokerUrl = Manager.getBroker(topic, int(partition))
+            return redirect(brokerUrl + "/consumer/register", 307)
+        else:
+            # Subscribe to all partitions of a topic
+            retID = Manager.registerClientForAllPartitions("/consumer/register", topic, False)
+            return {
+                "status": "Success",
+                "consumer_id": str(retID)
+            }
+
     except Exception as e:
         return {
             "status": "Failure",
@@ -137,12 +138,20 @@ def register_consumer():
 @ app.route("/producer/register", methods=['POST'])
 def register_producer():
     topic = request.get_json().get("topic")
+    partition = request.get_json().get("partition")
+    
     try:
-        pid = Queue.registerProducer(topic)
-        return {
-            "status":"Success",
-            "producer_id":pid
-        }
+        if partition:
+            brokerUrl = Manager.getBroker(topic, int(partition))
+            return redirect(brokerUrl + "/producer/register", 307)
+        else:
+            # Subscribe to all partitions of a topic
+            retID = Manager.registerClientForAllPartitions("/producer/register", topic, True)
+            return {
+                "status": "Success",
+                "producer_id": str(retID)
+            }
+            
     except Exception as e:
         return {
             "status": "Failure",
@@ -266,13 +275,14 @@ def size():
             }
 
 
-@app.route("/addbroker",methods=["POST"])
-def addbroker():
-    brokers.build_run('../broker/')
+@app.route("/addbroker", methods=["POST"])
+def addBroker():
+    brokers.build_run('../../broker/')
 
 
-@app.route("/removebroker",methods=["POST"])
-def addbroker():
-    brokers.build_run('../broker/')
+@app.route("/removebroker", methods=["POST"])
+def removeBroker():
+    brokers.build_run('../../broker/')
+
 
 

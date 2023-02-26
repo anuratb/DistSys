@@ -172,31 +172,6 @@ class Manager:
     @classmethod
     def getSize(cls, topicName, conID):
         pass
-        
-class TopicNode:
-    
-    def __init__(self, topicID_):
-        self.topicID = topicID_
-        self.producerList = [0, 1] # List of subscribed producers
-        self.plock = threading.Lock() # Lock for producerList
-        self.consumerList = [0, 1] # List of subscribed consumers
-        self.clock = threading.Lock() # Lock for consumerList
-        self.partitions = []#List of Partition Entries
-        self.cur  = 0#initialization of initial partition #TODO Anindya
-        
-    def subscribeProducer(self, producerID_):
-        self.producerList.append(producerID_)
-    
-    def subscribeConsumer(self, consumerID_):
-        self.consumerList.append(consumerID_)
-    #Return next partition id to be appended 
-    #Remember we also need to update self.cur
-    # TODO Anindya
-    def next(self):
-        pass
-
-
-
 
 
 class Broker:
@@ -204,19 +179,6 @@ class Broker:
         self.DB_URI = DB_URI
         self.url = url
         self.docker_name = name
-
-class PartitionEntry:
-    cnt = 0
-    def __init__(self,topic:TopicNode,broker:Broker):
-        self.topic = topic
-        self.id = cnt
-        self.broker = broker
-        #local topic name for broker to maintain uniqueness
-        self.local_topic_name = str(topic.topicID)+'#'+str(broker.docker_name)
-        cnt+=1
-
-    def next(self):
-        pass
 
 class Docker:
     def __init__(self):
