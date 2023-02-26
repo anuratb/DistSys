@@ -21,11 +21,13 @@ class TopicMetaData:
         # A map from partiton#topicName to the corresponding broker url
         self.PartitionBroker = {}
         self.lock = threading.Lock()
-
+        self.BrokerUrls = set()
+    def addBrokerUrl(self,url):
+        self.BrokerUrls.insert(url)
     # Adds a topic and randomly decides number of paritions
     def addTopic(self, topicName):
         # TODO get the current number of brokers numBrokers
-        numBrokers = 5
+        numBrokers = len(self.BrokerUrls)
         numPartitions = int(random() * numBrokers)
         if not numPartitions: numPartitions = 1
 
@@ -41,7 +43,7 @@ class TopicMetaData:
         for i in range(1, numPartitions + 1):
             # TODO assign the broker url
             brokerTopicName = str(i) + '#' + topicName
-            self.PartitionBroker[brokerTopicName] = BROKER_URL
+            self.PartitionBroker[brokerTopicName] = self.BrokerUrls[i-1]
         
         # POST request to each broker to create new topic
         for i in range(self.Topics[topicName][1]):
@@ -227,6 +229,7 @@ class Docker:
         self.cnt = 0
         # Maps Docker Name to Broker Object
         self.id ={}
+        self.lock = threading.Lock()
 
     def build_run(self,path:str):
         curr_id = cnt
@@ -250,7 +253,14 @@ class Docker:
         obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
         obj = os.system("docker run {} -p 5000:5005".format("broker"+str(curr_id)))
         url = None
+        self.lock.acquire()
         self.id[cnt] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
+        self.lock.release()
+        TopicMetaData.lock.aquire()
+        TopicMetaData.addBrokerUrl(url)
+        TopicMetaData.lock.release()
+    def removeBroker(self,brokerUrl):
+        pass#TODO
 
 
 '''
