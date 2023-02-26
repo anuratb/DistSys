@@ -1,8 +1,8 @@
 import threading
 from api import db
 from api.models import QueueDB,Topics,Producer,Consumer
+
 class TopicNode:
-    
     def __init__(self, topicID_):
         self.topicID = topicID_
         self.producerList = [0, 1] # List of subscribed producers
