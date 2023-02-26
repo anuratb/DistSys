@@ -6,7 +6,7 @@ from random import random
 
 db_username = 'anurat'
 db_password = 'abcd'
-db_host = '127.0.0.1'
+db_host = '127.0.0.1'#TODO get my subnet ip
 db_port = '5432'
 
 import psycopg2
