@@ -1,6 +1,6 @@
 import threading
 from . import db
-import os, requests
+import os, requests, time
 from random import random
 
 
@@ -46,7 +46,8 @@ class TopicMetaData:
         # POST request to each broker to create new topic
         for i in range(self.Topics[topicName][1]):
             brokerTopicName = str(i + 1) + '#' + topicName
-            res = requests.post(self.PartitionBroker[brokerTopicName] + "/topics", json={
+            res = requests.post(self.PartitionBroker[brokerTopicName] + "/topics", 
+            json={
                 "name": brokerTopicName
             })
 
@@ -78,20 +79,38 @@ class ProducerMetaData:
         # Only stores those producers that subscribe to enitre topic
         # Map from producerID#TopicName to producerIDs in different brokers
         self.subscription = {}
+        # Map from producerID#TopicName to round-robin index
+        self.rrIndex = {}
         self.producerCnt = producerCnt_
-        self.lock = threading.Lock()
+        self.subscriptionLock = threading.Lock()
+        self.rrIndexLock = {}
 
     def addSubscription(self, producerIDs, topicName):
-        self.lock.acquire()
-        self.subscription["$" + str(self.producerCnt) + "#" + topicName] = producerIDs
+        self.subscriptionLock.acquire()
+        prodID = "$" + str(self.producerCnt)
         self.producerCnt += 1
-        self.lock.release()
+        self.subscriptionLock.release()
+
+        K = prodID + "#" + topicName
+        self.rrIndex[K] = 0
+        self.rrIndexLock[K] = threading.Lock()
+        self.subscription[K] = producerIDs
+        
+        return prodID
 
     def checkSubscription(self, producerID, topicName):
-        K = "$" + str(producerID) + "#" + topicName
+        K = producerID + "#" + topicName
         if K not in self.subscription:
-            raise Exception("Invalid Subscription")
-        return self.subscription[K]
+            return False
+        return True
+
+    def getRRIndex(self, prodID, topicName):
+        K = prodID + "#" + topicName
+        self.rrIndexLock[K].acquire()
+        nextBroker = self.rrIndex[K]
+        self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K]) + 1
+        self.rrIndexLock[K].release()
+        return nextBroker
 
 class ConsumerMetaData:
 
@@ -99,27 +118,46 @@ class ConsumerMetaData:
         # Only stores those consumers that subscribe to enitre topic
         # Map from consumerID#TopicName to consumerIDs in different brokers
         self.subscription = {}
+        # Map from consumerID#TopicName to round-robin index
+        self.rrIndex = {}
         self.consumersCnt = consumersCnt_
-        self.lock = threading.Lock()
+        self.subscriptionLock = threading.Lock()
+        self.rrIndexLock = {}
 
     def addSubscription(self, consumerIDs, topicName):
-        self.lock.acquire()
+        self.subscriptionLock.acquire()
         conID = "$" + str(self.consumersCnt)
-        self.subscription[conID + "#" + topicName] = consumerIDs
         self.consumersCnt += 1
-        self.lock.release()
+        self.subscriptionLock.release()
+
+        K = conID + "#" + topicName
+        self.rrIndex[K] = 0
+        self.rrIndexLock[K] = threading.Lock()
+        self.subscription[K] = consumerIDs
+
         return conID
 
     def checkSubscription(self, consumerID, topicName):
-        K = "$" + str(consumerID) + "#" + topicName
+        K = consumerID + "#" + topicName
         if K not in self.subscription:
-            raise Exception("Invalid Subscription")
-        return self.subscription[K]
+            return False
+        return True
+
+    def getRRIndex(self, conID, topicName):
+        K = conID + "#" + topicName
+        self.rrIndexLock[K].acquire()
+        nextBroker = self.rrIndex[K]
+        self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K]) + 1
+        self.rrIndexLock[K].release()
+        return nextBroker
 
 class Manager:
     topicMetaData = TopicMetaData()
     consumerMetaData = ConsumerMetaData()
     producerMetaData = ProducerMetaData()
+    # A map from broker ID to broker Metadata
+    # TODO how to add broker Metadata?
+    brokers = {}
 
     @classmethod
     def getBroker(cls, topicName, partition):
@@ -129,6 +167,9 @@ class Manager:
 
     @classmethod
     def registerClientForAllPartitions(cls, url, topicName, isProducer):
+        if topicName not in Manager.topicMetaData.Topics[topicName]:
+            raise Exception(f"Topic {topicName} doesn't exist")
+
         numPartitions = Manager.topicMetaData.Topics[topicName][1]
         IDs = []
         for i in range(1, numPartitions + 1):
@@ -174,11 +215,12 @@ class Manager:
         pass
 
 
-class Broker:
+class BrokerMetaData:
     def __init__(self, DB_URI = '', url = '', name = ''):
         self.DB_URI = DB_URI
         self.url = url
         self.docker_name = name
+        self.last_beat = time.monotonic()
 
 class Docker:
     def __init__(self):
@@ -208,7 +250,7 @@ class Docker:
         obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
         obj = os.system("docker run {} -p 5000:5005".format("broker"+str(curr_id)))
         url = None
-        self.id[cnt] = Broker(db_uri,url,"broker"+str(curr_id))
+        self.id[cnt] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
 
 
 '''
