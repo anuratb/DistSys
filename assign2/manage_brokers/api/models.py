@@ -17,12 +17,18 @@ from api import db
 ####################### FOR TOPIC METADATA #########################
 class TopicMetadataDB(db.model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)
+    topics = db.relationship('TopicDB',backref='topicMetadata',lazy=True)
     PartitionBroker = db.relationship('TopicBroker',backref='topic',lazy =True)
     BrokerUrls = db.relationship('BrokerURL',backref='topic',lazy=True)
     pass
-
+class TopicDB(db.model):
+    id = db.Column(db.Integer,primary_key=True,nullable=False)
+    topicName = db.Column(db.String,primary_key=False,nullable=False)
+    numPartitions = db.Column(db.Integer,nullable=False)
+    topic_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
 class TopicBroker(db.model):
     topic = db.Column(db.String,primary_key=True,nullable=False)
+    partition = db.Column(db.Integer,primary_key=True,nullable=False)
     brokerURL = db.Column(db.String,primary_key = False,nullable=False)
     topic_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
 
@@ -38,7 +44,7 @@ class ProducerMetaDataDB(db.model):
     
 
 class ProdSubscribe(db.model):
-    id = db.Column(db.Integer,primary_key=True,nullable=False)
+    id = db.Column(db.String,primary_key=True,nullable=False) # producer id # topicName
     rrIndex = db.Column(db.Integer,nullable=False)
     brokerList = db.relationship('ProdTopicBroker',backref='ProdSubscribe',lazy = True)
     prodMetadataId = db.Column(db.Integer,db.ForeignKey('ProducerMetadata.id'))
