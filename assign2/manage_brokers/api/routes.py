@@ -2,6 +2,7 @@
 from flask import request, redirect
 from api import app
 from .data_struct import brokers, Manager
+import requests
 
 
 '''
@@ -100,7 +101,7 @@ def register_consumer():
     partition = request.get_json().get("partition")
     try:
         if partition:
-            brokerUrl = Manager.getBroker(topic, int(partition))
+            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
             return redirect(brokerUrl + "/consumer/register", 307)
         else:
             # Subscribe to all partitions of a topic
@@ -142,7 +143,7 @@ def register_producer():
     
     try:
         if partition:
-            brokerUrl = Manager.getBroker(topic, int(partition))
+            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
             return redirect(brokerUrl + "/producer/register", 307)
         else:
             # Subscribe to all partitions of a topic
@@ -180,25 +181,41 @@ def register_producer():
 
 @ app.route("/producer/produce", methods=['POST'])
 def enqueue():
-    pass
-    '''
     try:
         topic: str = request.get_json().get('topic')
-        producer_id: int = request.get_json().get('producer_id')
+        producer_id: str = request.get_json().get('producer_id')
         message: str = request.get_json().get('message')
 
-        Queue.enqueue(topic, producer_id , message)
-        return {
-            "status": "Success",
-            "message": ""
-        }
+        if producer_id[0] == '$':
+            brokerID, prodID = Manager.producerMetaData.getRRIndex(producer_id, topic)
+            brokerUrl = Manager.getBrokerUrlFromID(brokerID)
+
+            res = requests.get(
+                brokerUrl + "/producer/produce",
+                params = {
+                    "topic": topic,
+                    "producer_id": prodID,
+                    "message":message
+                }
+            )
+            if(res.json().get("status") == "Success"):
+                return {
+                    "status": "Success",
+                    "message": ""
+                }
+            else:
+                raise Exception(res.json.get("message"))
+        else:
+            partition = request.get_json().get('partition')
+            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
+            return redirect(brokerUrl + "/producer/produce", 307)
 
     except Exception as e:
         return {
             "status": "Failure",
             "message": str(e)
         }
-    '''
+
 '''
     f. Dequeue
 
@@ -219,24 +236,38 @@ def enqueue():
 
 @ app.route("/consumer/consume", methods=['GET'])
 def dequeue():
-    pass
-    '''
-    try :
-        topic: str = request.args.get('topic', type=str)
-        consumer_id: int = request.args.get('consumer_id', type=int)
+    try:
+        topic: str = request.get_json().get('topic')
+        consumer_id: str = request.get_json().get('consumer_id')
 
-        msg = Queue.dequeue(topic, consumer_id)
-        return {
-            "status": "Success",
-            "message": msg
-        }
+        if consumer_id[0] == '$':
+            brokerID, conID = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
+            brokerUrl = Manager.getBrokerUrlFromID(brokerID)
+            res = requests.get(
+                brokerUrl + "/consumer/consume",
+                params = {
+                    "topic": topic,
+                    "consumer_id": str(conID)
+                }
+            )
+            if(res.json().get("status") == "Success"):
+                msg = res.json().get("message")
+                return {
+                    "status": "Success",
+                    "message": msg
+                }
+            else:
+                raise Exception(res.json.get("message"))
+        else:
+            partition = request.get_json().get('partition')
+            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
+            return redirect(brokerUrl + "/consumer/consumer", 307)
 
-    except Exception as e : 
+    except Exception as e:
         return {
-            "status" : "Failure" ,
-            "message" : str(e)
+            "status": "Failure",
+            "message": str(e)
         }
-    '''
 
 '''
     Size
