@@ -56,41 +56,42 @@ class TopicMetaData:
     def getTopicsList(self):
         return self.Topics
 
-class ClientMetaData:
-    def __init__(self, cnt = 0):
-        # Only stores those clients that subscribe to enitre topic
-        # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
+class ProducerMetaData:
+    
+    def __init__(self, producerCnt_ = 0):
+        # Only stores those producers that subscribe to enitre topic
+        # Map from producerID#TopicName to an array X. X[i] contains an array containing brokerID followed by
         # corresponding prodIDs
         self.subscription = {}
-        # Map from clientID#TopicName to round-robin index
+        # Map from producerID#TopicName to round-robin index
         self.rrIndex = {}
-        self.clientCnt = cnt
+        self.producerCnt = producerCnt_
         self.subscriptionLock = threading.Lock()
         self.rrIndexLock = {}
 
-    def addSubscription(self, clientIDs, topicName):
+    def addSubscription(self, producerIDs, topicName):
         self.subscriptionLock.acquire()
-        clientID = "$" + str(self.clientCnt)
-        self.clientCnt += 1
+        prodID = "$" + str(self.producerCnt)
+        self.producerCnt += 1
         self.subscriptionLock.release()
 
-        K = clientID + "#" + topicName
+        K = prodID + "#" + topicName
         self.rrIndex[K] = 0
         self.rrIndexLock[K] = threading.Lock()
-        self.subscription[K] = clientIDs
+        self.subscription[K] = producerIDs
         
-        return clientID
+        return prodID
 
-    def checkSubscription(self, clientID, topicName):
-        K = clientID + "#" + topicName
+    def checkSubscription(self, producerID, topicName):
+        K = producerID + "#" + topicName
         if K not in self.subscription:
             return False
         return True
 
-    def getRRIndex(self, clientID, topicName):
+    def getRRIndex(self, prodID, topicName):
         if topicName not in Manager.topicMetaData.Topics:
             raise Exception(f"Topic {topicName} doesn't exist")
-        K = clientID + "#" + topicName
+        K = prodID + "#" + topicName
         self.rrIndexLock[K].acquire()
         nextBroker = self.rrIndex[K]
         self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K])
@@ -102,15 +103,53 @@ class ClientMetaData:
             partitionID = int(random() * (L - 1))
         return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][partitionID + 1]
 
-class ProducerMetaData(ClientMetaData):
-    
-    def __init__(self, producerCnt_ = 0):
-        ClientMetaData.__init__(self, producerCnt_)
-
-class ConsumerMetaData(ClientMetaData):
+class ConsumerMetaData:
 
     def __init__(self, consumersCnt_ = 0):
-        ClientMetaData.__init__(self, consumersCnt_)
+        # Only stores those consumers that subscribe to enitre topic
+        # Map from consumerID#TopicName to an array X. X[i] contains an array containing brokerID followed by
+        # corresponding conIDs
+        self.subscription = {}
+        # Map from consumerID#TopicName to round-robin index
+        self.rrIndex = {}
+        self.consumersCnt = consumersCnt_
+        self.subscriptionLock = threading.Lock()
+        self.rrIndexLock = {}
+
+    def addSubscription(self, consumerIDs, topicName):
+        self.subscriptionLock.acquire()
+        conID = "$" + str(self.consumersCnt)
+        self.consumersCnt += 1
+        self.subscriptionLock.release()
+
+        K = conID + "#" + topicName
+        self.rrIndex[K] = 0
+        self.rrIndexLock[K] = threading.Lock()
+        self.subscription[K] = consumerIDs
+
+        return conID
+
+    def checkSubscription(self, consumerID, topicName):
+        K = consumerID + "#" + topicName
+        if K not in self.subscription:
+            return False
+        return True
+
+    def getRRIndex(self, conID, topicName):
+        if topicName not in Manager.topicMetaData.Topics:
+            raise Exception(f"Topic {topicName} doesn't exist")
+            
+        K = conID + "#" + topicName
+        self.rrIndexLock[K].acquire()
+        nextBroker = self.rrIndex[K]
+        self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K])
+        self.rrIndexLock[K].release()
+
+        L = len(self.subscription[K][nextBroker])
+        partitionID = 0
+        if L > 2:
+            partitionID = int(random() * (L - 1))
+        return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][partitionID + 1]
 
 class Manager:
     topicMetaData = TopicMetaData()
@@ -165,7 +204,7 @@ class Manager:
         for i in range(1, numPartitions + 1):
             brokerTopicName = str(i) + '#' + topicName
             brokerID = cls.topicMetaData.getBrokerID(brokerTopicName)
-            brokerUrl = cls.getBrokerUrlFromID(brokerID)
+            brokerUrl = cls.getBrokerUrl(brokerID)
             res = requests.post(
                 brokerUrl + url,
                 json={
