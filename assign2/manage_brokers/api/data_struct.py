@@ -18,12 +18,10 @@ class TopicMetaData:
     def __init__(self):
         # Map from topicName to {topicID, numPartitions}
         self.Topics = {}
-        # A map from partiton#topicName to the corresponding broker url
+        # A map from partiton#topicName to the corresponding brokerID
         self.PartitionBroker = {}
         self.lock = threading.Lock()
-        self.BrokerUrls = set()
-    def addBrokerUrl(self,url):
-        self.BrokerUrls.insert(url)
+
     # Adds a topic and randomly decides number of paritions
     def addTopic(self, topicName):
         # TODO get the current number of brokers numBrokers
@@ -40,24 +38,7 @@ class TopicMetaData:
         self.lock.release()
 
         # Choose the brokers (TODO how?)
-        for i in range(1, numPartitions + 1):
-            # TODO assign the broker url
-            brokerTopicName = str(i) + '#' + topicName
-            self.PartitionBroker[brokerTopicName] = self.BrokerUrls[i-1]
-        
-        # POST request to each broker to create new topic
-        for i in range(self.Topics[topicName][1]):
-            brokerTopicName = str(i + 1) + '#' + topicName
-            res = requests.post(self.PartitionBroker[brokerTopicName] + "/topics", 
-            json={
-                "name": brokerTopicName
-            })
-
-            # Broker failure (TODO: what to do?)
-            if res.status_code != 200:
-                pass
-            elif(res.json().get("status") != "Success"):
-                pass
+        Manager.assignBrokers(self.PartitionBroker, numPartitions)
 
 
     def getSubbedTopicName(self, topicName, partition = 0):
@@ -69,7 +50,7 @@ class TopicMetaData:
                 raise Exception(f"Invalid partition for topic: {topicName}")
         return ret
 
-    def getBrokerUrl(self, subbedTopicName):
+    def getBrokerID(self, subbedTopicName):
         return self.PartitionBroker[subbedTopicName]
 
     def getTopicsList(self):
@@ -79,7 +60,8 @@ class ProducerMetaData:
     
     def __init__(self, producerCnt_ = 0):
         # Only stores those producers that subscribe to enitre topic
-        # Map from producerID#TopicName to producerIDs in different brokers
+        # Map from producerID#TopicName to an array X. X[i] contains an array containing brokerID followed by
+        # corresponding prodIDs
         self.subscription = {}
         # Map from producerID#TopicName to round-robin index
         self.rrIndex = {}
@@ -107,18 +89,26 @@ class ProducerMetaData:
         return True
 
     def getRRIndex(self, prodID, topicName):
+        if topicName not in Manager.topicMetaData.Topics:
+            raise Exception(f"Topic {topicName} doesn't exist")
         K = prodID + "#" + topicName
         self.rrIndexLock[K].acquire()
         nextBroker = self.rrIndex[K]
-        self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K]) + 1
+        self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K])
         self.rrIndexLock[K].release()
-        return nextBroker
+        
+        L = len(self.subscription[K][nextBroker])
+        partitionID = 0
+        if L > 2:
+            partitionID = int(random() * (L - 1))
+        return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][partitionID + 1]
 
 class ConsumerMetaData:
 
     def __init__(self, consumersCnt_ = 0):
         # Only stores those consumers that subscribe to enitre topic
-        # Map from consumerID#TopicName to consumerIDs in different brokers
+        # Map from consumerID#TopicName to an array X. X[i] contains an array containing brokerID followed by
+        # corresponding conIDs
         self.subscription = {}
         # Map from consumerID#TopicName to round-robin index
         self.rrIndex = {}
@@ -146,12 +136,20 @@ class ConsumerMetaData:
         return True
 
     def getRRIndex(self, conID, topicName):
+        if topicName not in Manager.topicMetaData.Topics:
+            raise Exception(f"Topic {topicName} doesn't exist")
+            
         K = conID + "#" + topicName
         self.rrIndexLock[K].acquire()
         nextBroker = self.rrIndex[K]
-        self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K]) + 1
+        self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K])
         self.rrIndexLock[K].release()
-        return nextBroker
+
+        L = len(self.subscription[K][nextBroker])
+        partitionID = 0
+        if L > 2:
+            partitionID = int(random() * (L - 1))
+        return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][partitionID + 1]
 
 class Manager:
     topicMetaData = TopicMetaData()
@@ -162,9 +160,37 @@ class Manager:
     brokers = {}
 
     @classmethod
-    def getBroker(cls, topicName, partition):
+    def assignBrokers(cls, PartitionBroker, topicName, numPartitions):
+        brokerIDs = list(brokers.keys())
+        l = len(brokerIDs)
+        brokerList = []
+        for _ in range(numPartitions):
+            brokerList.append(brokerIDs[int(random() * l)])
+
+        for brokerID in brokerList:
+            # TODO assign the broker url
+            brokerTopicName = str(i) + '#' + topicName
+            PartitionBroker[brokerTopicName] = brokerID
+        
+        # POST request to each broker to create new topic
+        for i in range(numPartitions):
+            brokerTopicName = str(i + 1) + '#' + topicName
+            res = requests.post(PartitionBroker[brokerTopicName] + "/topics", 
+            json={
+                "name": brokerTopicName
+            })
+
+            # Broker failure (TODO: what to do?)
+            if res.status_code != 200:
+                pass
+            elif(res.json().get("status") != "Success"):
+                pass
+
+    @classmethod
+    def getBrokerUrl(cls, topicName, partition):
         subbedTopicName = cls.topicMetaData.getSubbedTopicName(topicName, partition)
-        return cls.topicMetaData.getBrokerUrl(subbedTopicName)
+        brokerID = cls.topicMetaData.getBrokerID(subbedTopicName)
+        return cls.getBrokerUrlFromID(brokerID)
 
 
     @classmethod
@@ -174,10 +200,13 @@ class Manager:
 
         numPartitions = Manager.topicMetaData.Topics[topicName][1]
         IDs = []
+        brokerMap = {}
         for i in range(1, numPartitions + 1):
             brokerTopicName = str(i) + '#' + topicName
+            brokerID = cls.topicMetaData.getBrokerID(brokerTopicName)
+            brokerUrl = cls.getBrokerUrl(brokerID)
             res = requests.post(
-                cls.topicMetaData.PartitionBroker[brokerTopicName] + url,
+                brokerUrl + url,
                 json={
                     "topic": topicName,
                     "partition": str(i)
@@ -186,7 +215,7 @@ class Manager:
             # TODO Broker Failure
             if res.status_code != 200:
                 pass
-            if(res.json().get("status") != "Success"):
+            elif(res.json().get("status") != "Success"):
                 raise Exception(res.json().get("message"))
             else:
                 ID = None
@@ -194,14 +223,23 @@ class Manager:
                     ID = res.json().get("producer_id")
                 else:
                     ID = res.json().get("consumer_id")
-                IDs.append(ID)
+                if brokerID not in brokerMap:
+                    brokerMap[brokerID] = []
+                brokerMap[brokerID].append(ID)
 
-            if isProducer:
-                return cls.producerMetaData.addSubscription(IDs, topicName)
-            else:
-                return cls.consumerMetaData.addSubscription(IDs, topicName)
-            
+        for brokerID in brokerMap.keys():
+            arr = [brokerID]
+            arr.extend(brokerMap[brokerID])
+            IDs.append(arr)
 
+        if isProducer:
+            return cls.producerMetaData.addSubscription(IDs, topicName)
+        else:
+            return cls.consumerMetaData.addSubscription(IDs, topicName)
+
+    @classmethod      
+    def getBrokerUrlFromID(cls, brokerID):
+        return cls.brokers[brokerID].url
 
     @classmethod
     def enqueue(cls, topicName, prodID, msg):
@@ -259,6 +297,7 @@ class Docker:
         TopicMetaData.lock.aquire()
         TopicMetaData.addBrokerUrl(url)
         TopicMetaData.lock.release()
+
     def removeBroker(self,brokerUrl):
         pass#TODO
 
