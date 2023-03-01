@@ -6,6 +6,7 @@ import json
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 
+WAL_path = "./temp.txt"
 
 Load_from_db = False
 
@@ -36,6 +37,20 @@ from api.data_struct import *
 from api.models import *
 
 def load_from_db():
+
+    ############################ Write Pending commits to DB ######################################
+    walFile = open(WAL_path, "r+")
+    for line in walFile.readlines():
+        exec(line)
+    db.commit.all()
+    #erase the file contents
+    walFile.truncate(0)
+    walFile.close()
+    ###############################################################################################
+
+
+
+
     ################################### Load Topic MetaData  ########################################
     topicMetaData = TopicMetaData()
     for topic in TopicDB.query.all():

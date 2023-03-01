@@ -11,6 +11,15 @@ db_port = '5432'
 
 import psycopg2
 
+
+WAL_path = './temp.txt'
+
+file = open('WAL_path.txt','w')
+
+
+
+
+
 BROKER_URL = "http://127.0.0.1:5124"
 
 class TopicMetaData:
@@ -44,6 +53,7 @@ class TopicMetaData:
         self.lock.release()
         ########### DB update ##############
         obj = TopicDB(topicName=topicName,numPartitions=numPartitions,topic_id=len(self.Topics)+1,topicMetaData_id=0)
+        file.write("db.session.add(TopicDB(topicName={},numPartitions={},topic_id={},topicMetaData_id=0))".format(topicName,numPartitions,len(self.Topics)+1))
         db.session.add(obj)
         db.session.commit()
         #########################################
@@ -92,13 +102,16 @@ class ProducerMetaData:
         self.subscription[K] = clientIDs
         ################## DB Updates #####################
         glob_prod = globalProducerDB(glob_id=clientID,topic = topicName,rrindex=0,brokerCnt = len(clientIDs))
+        file.write("db.session.add(globalProducerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
         for row in clientIDs:
             broker_id = row[0] 
             prod_ids = row[1:]
             local_prods = []
             for prod_id in prod_ids:
                 local_prods.append(localProducerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID))
+                file.write("db.session.add(localProducerDB(local_id = {},broker_id = {},glob_id = {}))".format(prod_id,broker_id,clientID))
         db.session.add(glob_prod)
+        
         for local_prod in local_prods:
             db.session.add(local_prod)
         db.session.commit()
@@ -174,12 +187,14 @@ class ConsumerMetaData:
 
         ################## DB Updates #####################
         glob_prod = globalConsumerDB(glob_id=clientID,topic = topicName,rrindex=0,brokerCnt = len(clientIDs))
+        file.write("db.session.add(globalConsumerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
         for row in clientIDs:
             broker_id = row[0] 
             prod_ids = row[1:]
             local_prods = []
             for prod_id in prod_ids:
                 local_prods.append(localConsumerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID))
+                file.write("db.session.add(localConsumerDB(local_id = {},broker_id = {},glob_id = {}))".format(prod_id,broker_id,clientID))
         db.session.add(glob_prod)
         for local_prod in local_prods:
             db.session.add(local_prod)
@@ -254,6 +269,7 @@ class Manager:
 
 
                 )
+                file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.brokerURL,broker_obj.db_uri,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
                 db.session.add(obj)
                 db.session.commit()
                 #####################################################
@@ -393,6 +409,7 @@ class Docker:
         ###################### DB UPDATES ############################
 
         obj  = DockerDB()
+        file.write("db.session.add(DockerDB()")
         db.session.add(obj)
         db.session.commit()
         ##############################################################
