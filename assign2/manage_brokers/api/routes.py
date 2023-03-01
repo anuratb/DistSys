@@ -240,7 +240,7 @@ def dequeue():
         topic: str = request.get_json().get('topic')
         consumer_id: str = request.get_json().get('consumer_id')
 
-        if consumer_id[0] == '$':
+        if 'partition' not in request.get_json().keys():
             brokerID, conID = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
             brokerUrl = Manager.getBrokerUrlFromID(brokerID)
             res = requests.get(

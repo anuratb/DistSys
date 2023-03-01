@@ -113,7 +113,29 @@ class ProducerMetaData:
             return False
         return True
 
+    '''
+    Returns the brokerID and prodID to which the message should be sent
+    '''
     def getRRIndex(self, clientID, topicName):
+
+
+
+        current_index = globalProducerDB.query.filter_by(glob_id=clientID,topic=topicName).first().rrindex
+        cnt = len(BrokerMetaDataDB.query.all())
+        obj = BrokerMetaDataDB.query.filter_by(broker_id=current_index).first()
+        L = len(BrokerMetaDataDB.query.filter_by(broker_id=current_index))
+        partitionID = 0
+        if L > 2:
+            partitionID = int(random() * (L - 1))
+        brokerID = obj.broker_id
+        prodID = obj.localProd[partitionID].local_id
+        current_index = (current_index + 1) % cnt
+        ########### DB update ##############
+        globalProducerDB.query.filter_by(glob_id=clientID,topic=topicName).first().rrindex=current_index
+        db.session.commit()
+        #########################################
+        return brokerID, prodID
+
         if topicName not in Manager.topicMetaData.Topics:
             raise Exception(f"Topic {topicName} doesn't exist")
         K = clientID + "#" + topicName
@@ -311,7 +333,9 @@ class Manager:
 
     @classmethod      
     def getBrokerUrlFromID(cls, brokerID):
-        return cls.brokers[brokerID].url
+        #To be done by read only manager
+        return BrokerMetaDataDB.query.filter_by(broker_id = brokerID).first().url
+        #return cls.brokers[brokerID].url
 
     @classmethod
     def enqueue(cls, topicName, prodID, msg):
