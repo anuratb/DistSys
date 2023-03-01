@@ -32,6 +32,8 @@ def create_app(test_config = None):
 
 app, db = create_app()
 
+from api.data_struct import *
+from api.models import *
 
 def load_from_db():
     pass
@@ -50,7 +52,7 @@ else:
     pass
     # db.create_all()
     
-from . import routes
+from api import routes
 
  
 

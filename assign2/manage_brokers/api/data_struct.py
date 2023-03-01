@@ -2,7 +2,7 @@ import threading
 from . import db
 import os, requests, time
 from random import random
-
+from api import TopicMetadataDB,TopicDB,TopicBroker,BrokerURL,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB,DockerDB
 
 db_username = 'anurat'
 db_password = 'abcd'
@@ -21,6 +21,12 @@ class TopicMetaData:
         # A map from partiton#topicName to the corresponding brokerID
         self.PartitionBroker = {}
         self.lock = threading.Lock()
+        self.BrokerUrls = set()
+    def addBrokerUrl(self,url):
+        self.BrokerUrls.insert(url)
+
+        #No DB updates as assuming broker already created
+
 
     # Adds a topic and randomly decides number of paritions
     def addTopic(self, topicName):
@@ -36,6 +42,12 @@ class TopicMetaData:
                
         self.Topics[topicName] = [len(self.Topics) + 1, numPartitions]
         self.lock.release()
+        ########### DB update ##############
+        obj = TopicDB(topicName=topicName,numPartitions=numPartitions,topic_id=len(self.Topics)+1,topicMetaData_id=0)
+        db.session.add(obj)
+        db.session.commit()
+        #########################################
+
 
         # Choose the brokers (TODO how?)
         Manager.assignBrokers(self.PartitionBroker, numPartitions)
@@ -56,7 +68,7 @@ class TopicMetaData:
     def getTopicsList(self):
         return self.Topics
 
-class ClientMetaData:
+class ProducerMetaData:
     def __init__(self, cnt = 0):
         # Only stores those clients that subscribe to enitre topic
         # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
@@ -78,7 +90,21 @@ class ClientMetaData:
         self.rrIndex[K] = 0
         self.rrIndexLock[K] = threading.Lock()
         self.subscription[K] = clientIDs
-        
+        ################## DB Updates #####################
+        glob_prod = globalProducerDB(glob_id=clientID,topic = topicName,rrindex=0,brokerCnt = len(clientIDs))
+        for row in clientIDs:
+            broker_id = row[0] 
+            prod_ids = row[1:]
+            local_prods = []
+            for prod_id in prod_ids:
+                local_prods.append(localProducerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID))
+        db.session.add(glob_prod)
+        for local_prod in local_prods:
+            db.session.add(local_prod)
+        db.session.commit()
+        ###################################################
+
+
         return clientID
 
     def checkSubscription(self, clientID, topicName):
@@ -101,7 +127,68 @@ class ClientMetaData:
         if L > 2:
             partitionID = int(random() * (L - 1))
         return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][partitionID + 1]
+class ConsumerMetaData:
+    def __init__(self, cnt = 0):
+        # Only stores those clients that subscribe to enitre topic
+        # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
+        # corresponding prodIDs
+        self.subscription = {}
+        # Map from clientID#TopicName to round-robin index
+        self.rrIndex = {}
+        self.clientCnt = cnt
+        self.subscriptionLock = threading.Lock()
+        self.rrIndexLock = {}
 
+    def addSubscription(self, clientIDs, topicName):
+        self.subscriptionLock.acquire()
+        clientID = "$" + str(self.clientCnt)
+        self.clientCnt += 1
+        self.subscriptionLock.release()
+
+        K = clientID + "#" + topicName
+        self.rrIndex[K] = 0
+        self.rrIndexLock[K] = threading.Lock()
+        self.subscription[K] = clientIDs
+
+        ################## DB Updates #####################
+        glob_prod = globalConsumerDB(glob_id=clientID,topic = topicName,rrindex=0,brokerCnt = len(clientIDs))
+        for row in clientIDs:
+            broker_id = row[0] 
+            prod_ids = row[1:]
+            local_prods = []
+            for prod_id in prod_ids:
+                local_prods.append(localConsumerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID))
+        db.session.add(glob_prod)
+        for local_prod in local_prods:
+            db.session.add(local_prod)
+        db.session.commit()
+        ###################################################        
+
+
+        return clientID
+
+    def checkSubscription(self, clientID, topicName):
+        K = clientID + "#" + topicName
+        if K not in self.subscription:
+            return False
+        return True
+
+    def getRRIndex(self, clientID, topicName):#For now no need to update db here
+        if topicName not in Manager.topicMetaData.Topics:
+            raise Exception(f"Topic {topicName} doesn't exist")
+        K = clientID + "#" + topicName
+        self.rrIndexLock[K].acquire()
+        nextBroker = self.rrIndex[K]
+        self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K])
+        self.rrIndexLock[K].release()
+        
+        L = len(self.subscription[K][nextBroker])
+        partitionID = 0
+        if L > 2:
+            partitionID = int(random() * (L - 1))
+        return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][partitionID + 1]
+
+'''
 class ProducerMetaData(ClientMetaData):
     
     def __init__(self, producerCnt_ = 0):
@@ -111,9 +198,14 @@ class ConsumerMetaData(ClientMetaData):
 
     def __init__(self, consumersCnt_ = 0):
         ClientMetaData.__init__(self, consumersCnt_)
-
+'''
 class Manager:
     topicMetaData = TopicMetaData()
+    ################## DB Updates #####################
+    topicMetaDataDBObj = TopicMetadataDB()
+    db.session.add(topicMetaDataDBObj)
+    db.session.commit()
+    ###################################################
     consumerMetaData = ConsumerMetaData()
     producerMetaData = ProducerMetaData()
     # A map from broker ID to broker Metadata
@@ -126,12 +218,35 @@ class Manager:
         l = len(brokerIDs)
         brokerList = []
         for _ in range(numPartitions):
-            brokerList.append(brokerIDs[int(random() * l)])
+          #  brokerList.append(brokerIDs[int(random() * l)])
 
-        for brokerID in brokerList:
+        #for brokerID in brokerList:
             # TODO assign the broker url
+            broker_obj = None
+            try:
+                broker_obj = brokers.build_run("../../broker/")
+                ################# DB UPDATES ########################
+                obj = BrokerMetaDataDB(
+                    broker_id = broker_obj.brokerID, 
+                    url = broker_obj.brokerURL,
+                    db_uri = broker_obj.db_uri,
+                    docker_name = broker_obj.docker_name,
+                    last_beat = broker_obj.last_beat,
+                    docker_id = broker_obj.docker_id,
+
+
+                )
+                db.session.add(obj)
+                db.session.commit()
+                #####################################################
+                brokerID = broker_obj.brokerID
+
+            except:
+                pass #TODO
             brokerTopicName = str(i) + '#' + topicName
+
             PartitionBroker[brokerTopicName] = brokerID
+            brokers[brokerID] = broker_obj
         
         # POST request to each broker to create new topic
         for i in range(numPartitions):
@@ -217,11 +332,13 @@ class Manager:
 
 
 class BrokerMetaData:
-    def __init__(self, DB_URI = '', url = '', name = ''):
+    def __init__(self, DB_URI = '', url = '', name = '',brokerID = 0,docker_id = 0):
         self.DB_URI = DB_URI
         self.url = url
         self.docker_name = name
         self.last_beat = time.monotonic()
+        self.brokerID = brokerID
+        self.docker_id = docker_id
 
 class Docker:
     def __init__(self):
@@ -231,11 +348,13 @@ class Docker:
         self.lock = threading.Lock()
 
     def build_run(self,path:str):
+        self.lock.acquire()
         curr_id = cnt
         cnt+=1
-        broker_nme = "broker"+str(cnt)
+        self.lock.release()
+        broker_nme = "broker"+str(curr_id)
 
-        ##############Create Database#######################
+        ############## Create Database #######################
         conn = psycopg2.connect(
             user=db_username, password=db_password, host=db_host, port= db_port
         )
@@ -250,14 +369,24 @@ class Docker:
 
         db_uri = 'postgresql+psycopg2:/{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_host,broker_nme)
         obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
+
+        ###################### DB UPDATES ############################
+
+        obj  = DockerDB()
+        db.session.add(obj)
+        db.session.commit()
+        ##############################################################
+        docker_id = obj.id
+
         obj = os.system("docker run {} -p 5000:5005".format("broker"+str(curr_id)))
-        url = None
+        url = None#TODO
         self.lock.acquire()
-        self.id[cnt] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
+        self.id[curr_id] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
         self.lock.release()
         TopicMetaData.lock.aquire()
         TopicMetaData.addBrokerUrl(url)
         TopicMetaData.lock.release()
+        return BrokerMetaData(db_uri,url,"broker"+str(curr_id),curr_id,docker_id)
 
     def removeBroker(self,brokerUrl):
         pass#TODO

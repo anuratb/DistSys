@@ -18,26 +18,52 @@ from api import db
 class TopicMetadataDB(db.model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)
     topics = db.relationship('TopicDB',backref='topicMetadata',lazy=True)
-    PartitionBroker = db.relationship('TopicBroker',backref='topic',lazy =True)
-    BrokerUrls = db.relationship('BrokerURL',backref='topic',lazy=True)
-    pass
+    PartitionBroker = db.relationship('TopicBroker',backref='topicMetaData',lazy =True)
+    
 class TopicDB(db.model):
-    id = db.Column(db.Integer,primary_key=True,nullable=False)
+    topic_id = db.Column(db.Integer,primary_key=True,nullable=False)
     topicName = db.Column(db.String,primary_key=False,nullable=False)
     numPartitions = db.Column(db.Integer,nullable=False)
-    topic_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
+    topicMetaData_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
 class TopicBroker(db.model):
-    topic = db.Column(db.String,primary_key=True,nullable=False)
-    partition = db.Column(db.Integer,primary_key=True,nullable=False)
-    brokerURL = db.Column(db.String,primary_key = False,nullable=False)
+    id = db.Column(db.Integer,primary_key=True,nullable=False)
+    topic = db.Column(db.String,primary_key=False,nullable=False)
+    partition = db.Column(db.Integer,primary_key=False,nullable=False)
+    brokerID = db.Column(db.Integer,primary_key = False,nullable=False)
     topic_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
 
-class BrokerURL(db.model):
-    brokerURL = db.Column(db.string,primary_key=True,nullable = False)
-    topic_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
+#class BrokerURL(db.model):
+#    brokerURL = db.Column(db.string,primary_key=True,nullable = False)
+#    topic_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
 
 
 ######################### FOR PRODUCER METADATA #################################
+'''
+global_id
+topic
+broker_id
+local_id
+'''
+
+
+
+class globalProducerDB(db.model):
+    glob_id = db.Column(db.Integer,primary_key=True,nullable=False)
+    rrindex = db.Column(db.Integer,nullable=False)
+    topic = db.Column(db.String,nullable=False)
+    localProducer = db.relationship('localProducerDB',backref='globalProducer',lazy=True)
+    brokerCnt = db.Column(db.Integer,nullable=False)
+
+class localProducerDB(db.model):
+    id = db.Column(db.Integer,primary_key=True,nullable=False)
+    local_id = db.Column(db.Integer,primary_key=False,nullable=False)
+    broker_id = db.Column(db.Integer,db.ForeignKey('BrokerMetaDataDB.brokerID'),nullable=False)
+    glob_id = db.Column(db.Integer,db.ForeignKey('globalProducerDB.glob_id'),nullable=False)
+
+
+
+'''
+
 class ProducerMetaDataDB(db.model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)
     subscription = db.relationship('ProdSubscribe',backref='prodMetaData',lazy=True)
@@ -53,8 +79,23 @@ class ProdTopicBroker(db.model):
     brokerUrl = db.Column(db.Integer,primary_key=True,nullable=False)
     prodId = db.Column(db.Integer,nullable=False)
     ProdSubscribeId = db.Column(db.Integer,db.ForeignKey('ProdSubscribe.id'))
-
+'''
 ######################### FOR CONSUMER METADATA #################################
+
+class globalConsumerDB(db.model):
+    glob_id = db.Column(db.Integer,primary_key=True,nullable=False)
+    rrindex = db.Column(db.Integer,nullable=False)
+    topic = db.Column(db.String,nullable=False)
+    localConsumer = db.relationship('localConsumerDB',backref='globalConsumer',lazy=True)
+    brokerCnt = db.Column(db.Integer,nullable=False)
+
+class localConsumerDB(db.model):
+    id = db.Column(db.Integer,primary_key=True,nullable=False)
+    local_id = db.Column(db.Integer,primary_key=False,nullable=False)
+    broker_id = db.Column(db.Integer,db.ForeignKey('BrokerMetaDataDB.brokerID'),nullable=False)
+    glob_id = db.Column(db.Integer,db.ForeignKey('globalConsumerDB.glob_id'),nullable=False)
+
+'''
 class ConsumerMetaDataDB(db.model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)
     subscription = db.relationship('ConSubscribe',backref='conMetaData',lazy=True)
@@ -71,7 +112,7 @@ class ConTopicBroker(db.model):
     conId = db.Column(db.Integer,nullable=False)
     ConSubscribeId = db.Column(db.Integer,db.ForeignKey('ConSubscribe.id'))
 
-
+'''
 
 ############################## FOR MANAGER ###############################
 #class ManagerDB(db.model):
@@ -81,11 +122,14 @@ class ConTopicBroker(db.model):
 ############################### BROKER META DATA ##################
 
 class BrokerMetaDataDB(db.model):
-    db_uri = db.Column(db.String,primary_key=True,nullable=False)
+    db_uri = db.Column(db.String,primary_key=False,nullable=False)
+    broker_id = db.Column(db.Integer,primary_key=True,nullable=False)
     url = db.Column(db.String,nullable=False)
     docker_name = db.Column(db.String,nullable=False)
     last_beat = db.Column(db.Float,nullable=False)
     docker_id = db.Column(db.Integer,db.ForeignKey('DockerDB.id'))
+    localProd = db.relationship('localProducerDB',backref='broker',lazy=True)
+    localCons = db.relationship('localConsumerDB',backref='broker',lazy=True)
 
 ############################### DOCKER METADATA ##############################################
 class DockerDB(db.model):
