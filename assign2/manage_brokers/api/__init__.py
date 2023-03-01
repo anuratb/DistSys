@@ -36,10 +36,81 @@ from api.data_struct import *
 from api.models import *
 
 def load_from_db():
-    pass
+    ################################### Load Topic MetaData  ########################################
+    topicMetaData = TopicMetaData()
+    for topic in TopicDB.query.all():
+        topicMetaData.Topics[topic.topicName] = (topic.id,topic.numPartitions)
+    for topic in TopicBroker.query.all():
+        topicMetaData.PartitionBroker[str(topic.partition)+"#"+topic.topic] = topic.brokerId
+    topicMetaData.lock = threading.Lock()
+    for broker in BrokerMetaDataDB.query.all():
+        topicMetaData.BrokerUrls.insert(broker.url)
+        #BrokerMetaData.brokers[broker.id] = broker.url
+    ###############################################################################################
+
+    ################################### Load Producers  ########################################
+    producers = ProducerMetaData(len(globalProducerDB.query.all()))
+    producers.subscriptionLock = threading.Lock()
+    for producer in globalProducerDB.query.all():
+        producers.subscription[str(producer.glob_id)+"#"+producer.topic] = []
+        producers.rrIndex[str(producer.glob_id)+"#"+producer.topic] = producer.rrindex
+        producers.rrIndexLock[str(producer.glob_id)+"#"+producer.topic] = threading.Lock()
+
+        agg = {}
+        for local in producer.localProducer:
+            if(local.broker_id not in agg.keys()):
+                agg[local.broker_id] = []
+            agg[local.broker_id].append(local.local_id)
+        for brokerId,local_ids in agg.items():
+            producers.subscription[str(producer.glob_id)+"#"+producer.topic].append([brokerId,*local_ids])
+    ###########################################################################################
+    
+
+
+    ################################### Load Consumers  ########################################
+    consumers = ConsumerMetaData(len(globalConsumerDB.query.all()))
+    consumers.subscriptionLock = threading.Lock()
+    for consumer in globalConsumerDB.query.all():
+        consumers.subscription[str(consumer.glob_id)+"#"+consumer.topic] = []
+        consumers.rrIndex[str(consumer.glob_id)+"#"+consumer.topic] = consumer.rrindex
+        consumers.rrIndexLock[str(consumer.glob_id)+"#"+consumer.topic] = threading.Lock()
+
+        agg = {}
+        for local in consumer.localConsumer:
+            if(local.broker_id not in agg.keys()):
+                agg[local.broker_id] = []
+            agg[local.broker_id].append(local.local_id)
+        for brokerId,local_ids in agg.items():
+            consumers.subscription[str(consumer.glob_id)+"#"+consumer.topic].append([brokerId,*local_ids])
+    ###########################################################################################
+
+    ################################### Create Manager  ########################################
+    Manager.topicMetaData = topicMetaData
+    Manager.producerMetaData = producers
+    Manager.consumerMetaData = consumers
+    
+    ###########################################################################################
+
+
+    ################################### Load Broker MetaData  #######################################
+    brokersDocker = Docker()
+    Manager.brokers = {}
+    for broker in BrokerMetaDataDB.query.all():
+        curr = BrokerMetaData(
+            broker.db_id,
+            broker.url,
+            broker.docker_name,
+            broker.id,
+            broker.docker_id
+
+        )
+        Manager.brokers[broker.id] = curr
+        brokersDocker.brokers[broker.docker_name] = curr.copy()
+    ###########################################################################################
+
+
+
     #print(Queue.queue)
-
-
 # a simple page that says hello
 @app.route('/hello1')
 def hello1():

@@ -201,11 +201,7 @@ class ConsumerMetaData(ClientMetaData):
 '''
 class Manager:
     topicMetaData = TopicMetaData()
-    ################## DB Updates #####################
-    topicMetaDataDBObj = TopicMetadataDB()
-    db.session.add(topicMetaDataDBObj)
-    db.session.commit()
-    ###################################################
+   
     consumerMetaData = ConsumerMetaData()
     producerMetaData = ProducerMetaData()
     # A map from broker ID to broker Metadata
@@ -214,9 +210,9 @@ class Manager:
 
     @classmethod
     def assignBrokers(cls, PartitionBroker, topicName, numPartitions):
-        brokerIDs = list(brokers.keys())
-        l = len(brokerIDs)
-        brokerList = []
+        #brokerIDs = list(brokers.keys())
+        #l = len(brokerIDs)
+        #brokerList = []
         for _ in range(numPartitions):
           #  brokerList.append(brokerIDs[int(random() * l)])
 
@@ -224,7 +220,7 @@ class Manager:
             # TODO assign the broker url
             broker_obj = None
             try:
-                broker_obj = brokers.build_run("../../broker/")
+                broker_obj = brokersDocker.build_run("../../broker/")
                 ################# DB UPDATES ########################
                 obj = BrokerMetaDataDB(
                     broker_id = broker_obj.brokerID, 
@@ -246,7 +242,7 @@ class Manager:
             brokerTopicName = str(i) + '#' + topicName
 
             PartitionBroker[brokerTopicName] = brokerID
-            brokers[brokerID] = broker_obj
+            cls.brokers[brokerID] = broker_obj
         
         # POST request to each broker to create new topic
         for i in range(numPartitions):
@@ -403,4 +399,4 @@ class VM:
 
 ###############################GLOBALS#####################################
 
-brokers = Docker()
+brokersDocker = Docker()

@@ -15,22 +15,19 @@ from api import db
 
 
 ####################### FOR TOPIC METADATA #########################
-class TopicMetadataDB(db.model):
-    id = db.Column(db.Integer,primary_key=True,nullable=False)
-    topics = db.relationship('TopicDB',backref='topicMetadata',lazy=True)
-    PartitionBroker = db.relationship('TopicBroker',backref='topicMetaData',lazy =True)
+
     
 class TopicDB(db.model):
     topic_id = db.Column(db.Integer,primary_key=True,nullable=False)
     topicName = db.Column(db.String,primary_key=False,nullable=False)
     numPartitions = db.Column(db.Integer,nullable=False)
-    topicMetaData_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
+    #topicMetaData_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
 class TopicBroker(db.model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)
     topic = db.Column(db.String,primary_key=False,nullable=False)
     partition = db.Column(db.Integer,primary_key=False,nullable=False)
     brokerID = db.Column(db.Integer,primary_key = False,nullable=False)
-    topic_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
+    #topic_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
 
 #class BrokerURL(db.model):
 #    brokerURL = db.Column(db.string,primary_key=True,nullable = False)
