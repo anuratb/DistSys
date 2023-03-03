@@ -3,7 +3,7 @@ from . import db
 import json
 import os, requests, time
 from random import random
-from api import TopicMetadataDB,TopicDB,TopicBroker,BrokerURL,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB,DockerDB
+from api.models import TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB,DockerDB
 
 from api import db_host,db_port,db_password,db_username,docker_img_broker
 
@@ -413,7 +413,7 @@ class Docker:
         ##############################################################
         docker_id = obj.id
 
-        obj = os.system("docker run --name {} -p -d 0:5142 --expose 5142 {}".format("broker"+str(curr_id),docker_img_broker))
+        obj = os.system("docker run --name {} -d -p 0:5142 --expose 5142 -e DB_URI={} {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         url = json.loads(str(obj))["NetworkSettings"]["IPAddress"]+":5142/"
         self.lock.acquire()
         self.id[curr_id] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))

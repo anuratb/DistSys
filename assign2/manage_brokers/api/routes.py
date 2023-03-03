@@ -1,7 +1,7 @@
 
 from flask import request, redirect
 from api import app
-from .data_struct import brokers, Manager
+from api.data_struct import brokersDocker, Manager
 import requests
 
 
@@ -308,10 +308,10 @@ def size():
 
 @app.route("/addbroker", methods=["POST"])
 def addBroker():
-    brokers.build_run('../../broker/')
+    brokersDocker.build_run('../../broker/')
 
 
 @app.route("/removebroker", methods=["POST"])
 def removeBroker():
-    brokers.build_run('../../broker/')
+    brokersDocker.build_run('../../broker/')
 

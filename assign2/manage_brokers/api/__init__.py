@@ -3,6 +3,9 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import threading
 import json
+from dotenv import load_dotenv
+import psycopg2
+load_dotenv()
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 DOCKER_DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/'
@@ -34,24 +37,28 @@ Load_from_db = False
 def create_app(test_config = None):
     # create and configure the app
     app = Flask(__name__, instance_relative_config = True)
-
+    global DB_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = '5791628bb0b13ce0c676dfde280ba245'
     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
 
     if 'LOAD_FROM_DB' in os.environ.keys():
         global Load_from_db
-        Load_from_db = True
+        Load_from_db = os.environ['LOAD_FROM_DB']
     
     if ('DOCKER_DB_URI' in os.environ.keys()):        
         DOCKER_DB_URI = os.environ['DOCKER_DB_URI']
-
-    obj = json.loads(os.system("docker inspect {}".format(postgres_container)))
+    #print(str(os.system("docker inspect '{}'".format(postgres_container))))
+    #print(postgres_container)
+    obj = json.loads(os.popen("docker inspect '{}'".format(postgres_container)).read())
+    #print(obj[0].keys())
     global db_host
+    #print(obj[0]['NetworkSettings']['IPAddress'])
     db_host = obj[0]['NetworkSettings']['IPAddress']
     global db_port
     db_port = 5432
-    DOCKER_DB_URI = 'postgresql+psycopg2://'+db_username+':'+db_password+'@'+db_host+':'+db_port+'/'
+    DOCKER_DB_URI = 'postgresql+psycopg2://'+db_username+':'+db_password+'@'+db_host+':'+str(db_port)+'/'
+    '''
     if(Load_from_db == False):
         ############## Create Database #######################
         conn = psycopg2.connect(
@@ -60,20 +67,24 @@ def create_app(test_config = None):
         conn.autocommit = True
 
         cursor = conn.cursor()
-        sql = '''CREATE database {};'''.format('anurat')
+        sql = '''
+        #CREATE database {}
+    '''     .format('anurat')
         cursor.execute(sql)
         
         conn.close()
         DB_URI = DOCKER_DB_URI + 'anurat'
         ####################################################
+    '''
     #db = None
+    DB_URI = DOCKER_DB_URI + 'anurat'
     db = SQLAlchemy(app)
     return app, db
 
 app, db = create_app()
 
-from api.data_struct import *
-from api.models import *
+from api.data_struct  import TopicMetaData,ProducerMetaData,ConsumerMetaData,BrokerMetaData,Docker,Manager
+from api.models import TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,localProducerDB,localConsumerDB
 
 def load_from_db():
 
