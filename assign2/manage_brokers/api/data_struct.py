@@ -1,13 +1,11 @@
 import threading
 from . import db
+import json
 import os, requests, time
 from random import random
 from api import TopicMetadataDB,TopicDB,TopicBroker,BrokerURL,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB,DockerDB
 
-db_username = 'anurat'
-db_password = 'abcd'
-db_host = '127.0.0.1'#TODO get my subnet ip
-db_port = '5432'
+from api import db_host,db_port,db_password,db_username,docker_img_broker
 
 import psycopg2
 
@@ -404,7 +402,7 @@ class Docker:
         ####################################################
 
         db_uri = 'postgresql+psycopg2:/{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_host,broker_nme)
-        obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
+        #obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
 
         ###################### DB UPDATES ############################
 
@@ -415,8 +413,8 @@ class Docker:
         ##############################################################
         docker_id = obj.id
 
-        obj = os.system("docker run {} -p 5000:5005".format("broker"+str(curr_id)))
-        url = None#TODO
+        obj = os.system("docker run --name {} -p -d 0:5142 --expose 5142 {}".format("broker"+str(curr_id),docker_img_broker))
+        url = json.loads(str(obj))["NetworkSettings"]["IPAddress"]+":5142/"
         self.lock.acquire()
         self.id[curr_id] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
         self.lock.release()

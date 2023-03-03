@@ -5,8 +5,29 @@ import threading
 import json
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
-
+DOCKER_DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/'
 WAL_path = "./temp.txt"
+
+
+db_username = 'anurat'
+if 'DB_USERNAME' in os.environ:
+    db_username = os.environ['DB_USERNAME']
+db_password = 'abcd'
+if 'DB_PASSWORD' in os.environ:
+    db_password = os.environ['DB_PASSWORD']
+db_host = '127.0.0.1'#TODO get my subnet ip
+if 'DB_HOST' in os.environ:
+    db_host = os.environ['DB_HOST']
+db_port = '5432'
+if 'DB_PORT' in os.environ:
+    db_port = os.environ['DB_PORT']
+docker_img_broker = 'broker_image'
+if 'DOCKER_IMG_BROKER' in os.environ:
+    docker_img_broker = os.environ['DOCKER_IMG_BROKER']
+postgres_container = 'postgres'
+if 'POSTGRES_CONTAINER' in os.environ:
+    postgres_container = os.environ['POSTGRES_CONTAINER']
+
 
 Load_from_db = False
 
@@ -15,20 +36,38 @@ def create_app(test_config = None):
     app = Flask(__name__, instance_relative_config = True)
 
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    if(test_config is None):
-        app.config['SECRET_KEY'] = '5791628bb0b13ce0c676dfde280ba245'
-        app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
-    else:
-        obj = json.load(open(test_config))
-        ##print(obj["LOAD_FROM_DB"])
-        if(obj["LOAD_FROM_DB"]):
-            global Load_from_db
-            Load_from_db = True
-        app.config['SECRET_KEY'] = obj['SECRET_KEY']
-        app.config['SQLALCHEMY_DATABASE_URI'] = obj['DB_URI']
+    app.config['SECRET_KEY'] = '5791628bb0b13ce0c676dfde280ba245'
+    app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
 
-    db = None
-    # db = SQLAlchemy(app)
+    if 'LOAD_FROM_DB' in os.environ.keys():
+        global Load_from_db
+        Load_from_db = True
+    
+    if ('DOCKER_DB_URI' in os.environ.keys()):        
+        DOCKER_DB_URI = os.environ['DOCKER_DB_URI']
+
+    obj = json.loads(os.system("docker inspect {}".format(postgres_container)))
+    global db_host
+    db_host = obj[0]['NetworkSettings']['IPAddress']
+    global db_port
+    db_port = 5432
+    DOCKER_DB_URI = 'postgresql+psycopg2://'+db_username+':'+db_password+'@'+db_host+':'+db_port+'/'
+    if(Load_from_db == False):
+        ############## Create Database #######################
+        conn = psycopg2.connect(
+            user=db_username, password=db_password, host=db_host, port= db_port
+        )
+        conn.autocommit = True
+
+        cursor = conn.cursor()
+        sql = '''CREATE database {};'''.format('anurat')
+        cursor.execute(sql)
+        
+        conn.close()
+        DB_URI = DOCKER_DB_URI + 'anurat'
+        ####################################################
+    #db = None
+    db = SQLAlchemy(app)
     return app, db
 
 app, db = create_app()
@@ -135,8 +174,7 @@ app.app_context().push()
 
 if(Load_from_db):load_from_db()
 else:
-    pass
-    # db.create_all()
+    db.create_all()
     
 from api import routes
 

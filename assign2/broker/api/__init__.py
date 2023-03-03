@@ -4,7 +4,7 @@ import os
 import threading
 import json
 
-DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
+DB_URI = 'postgresql+psycopg2://anurat:abcd@10.102.68.15:5432/anurat'
 
 
 
