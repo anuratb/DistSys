@@ -28,9 +28,9 @@ class TopicMetaData:
         # A map from partiton#topicName to the corresponding brokerID
         self.PartitionBroker = {}
         self.lock = threading.Lock()
-        self.BrokerUrls = set()
-    def addBrokerUrl(self,url):
-        self.BrokerUrls.insert(url)
+      #  self.BrokerUrls = set()
+   # def addBrokerUrl(self,url):
+    #    self.BrokerUrls.insert(url)
 
         #No DB updates as assuming broker already created
 
@@ -38,7 +38,7 @@ class TopicMetaData:
     # Adds a topic and randomly decides number of paritions
     def addTopic(self, topicName):
         # TODO get the current number of brokers numBrokers
-        numBrokers = len(self.BrokerUrls)
+        numBrokers = len(Manager.brokers)
         numPartitions = int(random() * numBrokers)
         if not numPartitions: numPartitions = 1
 
@@ -256,21 +256,7 @@ class Manager:
             broker_obj = None
             try:
                 broker_obj = brokersDocker.build_run("../../broker/")
-                ################# DB UPDATES ########################
-                obj = BrokerMetaDataDB(
-                    broker_id = broker_obj.brokerID, 
-                    url = broker_obj.brokerURL,
-                    db_uri = broker_obj.db_uri,
-                    docker_name = broker_obj.docker_name,
-                    last_beat = broker_obj.last_beat,
-                    docker_id = broker_obj.docker_id,
-
-
-                )
-                file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.brokerURL,broker_obj.db_uri,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
-                db.session.add(obj)
-                db.session.commit()
-                #####################################################
+                
                 brokerID = broker_obj.brokerID
 
             except:
@@ -377,8 +363,8 @@ class BrokerMetaData:
 class Docker:
     def __init__(self):
         self.cnt = 0
-        # Maps Docker Name to Broker Object
-        self.id ={}
+        # Maps Docker Name to Broker Object --> Not needed
+        #self.id ={}
         self.lock = threading.Lock()
 
     def build_run(self,path:str):
@@ -405,24 +391,90 @@ class Docker:
         #obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
 
         ###################### DB UPDATES ############################
-
-        obj  = DockerDB()
-        file.write("db.session.add(DockerDB()")
-        db.session.add(obj)
-        db.session.commit()
+        #
+        #obj  = DockerDB()
+        #file.write("db.session.add(DockerDB()")
+        #db.session.add(obj)
+        #db.session.commit()
         ##############################################################
-        docker_id = obj.id
+        docker_id = 0
 
         obj = os.system("docker run --name {} -d -p 0:5142 --expose 5142 -e DB_URI={} {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         url = json.loads(str(obj))["NetworkSettings"]["IPAddress"]+":5142/"
-        self.lock.acquire()
-        self.id[curr_id] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
-        self.lock.release()
-        TopicMetaData.lock.aquire()
-        TopicMetaData.addBrokerUrl(url)
-        TopicMetaData.lock.release()
-        return BrokerMetaData(db_uri,url,"broker"+str(curr_id),curr_id,docker_id)
+        #self.lock.acquire()
+        #self.id[broker_nme] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
+        #self.lock.release()
+        #TopicMetaData.lock.aquire()
+        #TopicMetaData.addBrokerUrl(url)
+        #TopicMetaData.lock.release()
+        broker_obj = BrokerMetaData(db_uri,url,"broker"+str(curr_id),curr_id,docker_id)
+        ################# DB UPDATES ########################
+        obj = BrokerMetaDataDB(
+            broker_id = broker_obj.brokerID, 
+            url = broker_obj.brokerURL,
+            db_uri = broker_obj.db_uri,
+            docker_name = broker_obj.docker_name,
+            last_beat = broker_obj.last_beat,
+            docker_id = broker_obj.docker_id,
 
+
+        )
+        file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.brokerURL,broker_obj.db_uri,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
+        db.session.add(obj)
+        db.session.commit()
+        #####################################################
+        return broker_obj
+
+    def restartBroker(self,brokerId):
+        self.lock.acquire()
+        curr_id = cnt
+        cnt+=1
+        self.lock.release()
+        new_broker_nme = "broker"+str(curr_id)
+        oldBrokerObj = Manager.brokers[brokerId]
+
+        ############## Connect to Database #######################
+        #conn = psycopg2.connect(
+        #    user=db_username, password=db_password, host=db_host, port= db_port
+        #)
+        #conn.autocommit = True
+        #
+        #cursor = conn.cursor()
+        #sql = '''CREATE database {};'''.format(broker_nme)
+        #cursor.execute(sql)
+        #
+        #conn.close()
+        ####################################################
+
+        db_uri = oldBrokerObj.DB_URI
+        #obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
+
+        ###################### DB UPDATES ############################
+        #
+        #obj  = DockerDB()
+        #file.write("db.session.add(DockerDB()")
+        #db.session.add(obj)
+        #db.session.commit()
+        ##############################################################
+        docker_id = 0
+
+        obj = os.system("docker run --name {} -d -p 0:5142 --expose 5142 -e DB_URI={} {}".format(new_broker_nme,db_uri,docker_img_broker))
+        url = json.loads(str(obj))["NetworkSettings"]["IPAddress"]+":5142/"
+        self.lock.acquire()
+        #self.id[new_broker_nme] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
+        #self.lock.release()
+        #TopicMetaData.lock.aquire()
+        #TopicMetaData.addBrokerUrl(url)
+        #TopicMetaData.lock.release()
+        Manager[brokerId].docker_name = new_broker_nme
+        Manager[brokerId].url = url
+        Manager[brokerId].docker_id = docker_id
+        ################# DB UPDATES ########################
+        BrokerMetaDataDB.query.filter_by(broker_id = brokerId).update(dict(docker_name = new_broker_nme,url = url,docker_id = docker_id))
+        file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(brokerId,new_broker_nme,url,docker_id))
+        db.session.commit()
+        #####################################################
+        return Manager[brokerId]
     def removeBroker(self,brokerUrl):
         pass#TODO
 
