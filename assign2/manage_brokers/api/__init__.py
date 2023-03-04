@@ -153,6 +153,7 @@ def load_from_db():
     Manager.topicMetaData = topicMetaData
     Manager.producerMetaData = producers
     Manager.consumerMetaData = consumers
+    Manager.lock = threading.Lock()
     
     ###########################################################################################
 

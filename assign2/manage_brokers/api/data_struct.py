@@ -241,42 +241,47 @@ class Manager:
     producerMetaData = ProducerMetaData()
     # A map from broker ID to broker Metadata
     # TODO how to add broker Metadata?
+    lock = threading.Lock()
     brokers = {}
 
     @classmethod
     def assignBrokers(cls, PartitionBroker, topicName, numPartitions):
-        #brokerIDs = list(brokers.keys())
-        #l = len(brokerIDs)
-        #brokerList = []
-        for _ in range(numPartitions):
-          #  brokerList.append(brokerIDs[int(random() * l)])
+        if(len(cls.brokers) < numPartitions):
+            #create partitions on demand
+            for i in range(numPartitions - len(cls.brokers)):
+                broker_obj = brokersDocker.build_run("../../broker")
+                cls.lock.acquire()
+                cls.brokers[broker_obj.brokerID] = broker_obj
+                cls.lock.release()
+        brokerIDs = list(cls.brokers.keys())
+        l = len(brokerIDs)
+        brokerList = []
+        for i in range(numPartitions):
+            brokerList.append(cls.brokers.keys()[int(random() * l)])
 
-        #for brokerID in brokerList:
+        for i in range(numPartitions):
             # TODO assign the broker url
-            broker_obj = None
-            try:
-                broker_obj = brokersDocker.build_run("../../broker/")
-                
-                brokerID = broker_obj.brokerID
-
-            except:
-                pass #TODO
+            brokerID = brokerList[i]
             brokerTopicName = str(i) + '#' + topicName
-
             PartitionBroker[brokerTopicName] = brokerID
-            cls.brokers[brokerID] = broker_obj
+            
         
         # POST request to each broker to create new topic
         for i in range(numPartitions):
             brokerTopicName = str(i + 1) + '#' + topicName
-            res = requests.post(PartitionBroker[brokerTopicName] + "/topics", 
+            res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
             json={
                 "name": brokerTopicName
             })
 
             # Broker failure (TODO: what to do?)
             if res.status_code != 200:
-                pass
+                brokersDocker.restartBroker(cls.brokers[PartitionBroker[brokerTopicName]].brokerID)
+                brokerTopicName = str(i + 1) + '#' + topicName
+                res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
+                json={
+                    "name": brokerTopicName
+                })
             elif(res.json().get("status") != "Success"):
                 pass
 
