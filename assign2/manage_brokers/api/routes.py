@@ -185,7 +185,7 @@ def enqueue():
         topic: str = request.get_json().get('topic')
         producer_id: str = request.get_json().get('producer_id')
         message: str = request.get_json().get('message')
-
+        partition = request.get_json().get('partition')
         if producer_id[0] == '$':
             brokerID, prodID = Manager.producerMetaData.getRRIndex(producer_id, topic)
             brokerUrl = Manager.getBrokerUrlFromID(brokerID)
@@ -240,7 +240,7 @@ def dequeue():
         topic: str = request.get_json().get('topic')
         consumer_id: str = request.get_json().get('consumer_id')
 
-        if 'partition' not in request.get_json().keys():
+        if consumer_id[0] == '$':
             brokerID, conID = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
             brokerUrl = Manager.getBrokerUrlFromID(brokerID)
             res = requests.get(
@@ -278,7 +278,7 @@ def dequeue():
     Params:
     - "topic": <string>
     - "consumer_id": <int>
-    - "partition_id": <int> [Opt]
+    - "partition_id": <int> 
     Response:
     "status": <string>
     onSuccess:
@@ -291,13 +291,11 @@ def dequeue():
 def size():
     topic : str = request.args.get('topic' , type=str) 
     consumer_id : int = request.args.get('consumer_id', type=int)
-
+    
     try : 
-        queue_size : int = Queue.getSize(topic , consumer_id) 
-        return {
-            "status" : "Success" , 
-            "size" : queue_size 
-            }
+        partition = request.get_json().get('partition')
+        brokerUrl = Manager.getBrokerUrl(topic, int(partition))
+        return redirect(brokerUrl + "/size", 307)
     
     except Exception as e: 
         return {
@@ -313,5 +311,5 @@ def addBroker():
 
 @app.route("/removebroker", methods=["POST"])
 def removeBroker():
-    brokersDocker.build_run('../../broker/')
+    return NotImplementedError()
 
