@@ -3,37 +3,35 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import threading
 import json
+import dotenv
 from dotenv import load_dotenv
 import psycopg2
-load_dotenv()
-
+# load_dotenv()
+dotenv_file = dotenv.find_dotenv()
+dotenv.load_dotenv(dotenv_file)
+# print(os.environ)
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 DOCKER_DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/'
 WAL_path = "./temp.txt"
 
 
-db_username = 'anurat'
-if 'DB_USERNAME' in os.environ:
-    db_username = os.environ['DB_USERNAME']
-db_password = 'abcd'
-if 'DB_PASSWORD' in os.environ:
-    db_password = os.environ['DB_PASSWORD']
-db_host = '127.0.0.1'#TODO get my subnet ip
-if 'DB_HOST' in os.environ:
-    db_host = os.environ['DB_HOST']
-db_port = '5432'
-if 'DB_PORT' in os.environ:
-    db_port = os.environ['DB_PORT']
-docker_img_broker = 'broker_image'
-if 'DOCKER_IMG_BROKER' in os.environ:
-    docker_img_broker = os.environ['DOCKER_IMG_BROKER']
-postgres_container = 'postgres'
-if 'POSTGRES_CONTAINER' in os.environ:
-    postgres_container = os.environ['POSTGRES_CONTAINER']
+
+db_username = os.environ['DB_USERNAME']
+
+db_password = os.environ['DB_PASSWORD']
+
+db_host = os.environ['DB_HOST']
+
+db_port = os.environ['DB_PORT']
 
 
-Load_from_db = False
+docker_img_broker = os.environ['DOCKER_IMG_BROKER']
 
+postgres_container = os.environ['POSTGRES_CONTAINER']
+print(docker_img_broker,db_username,db_host)
+
+Load_from_db = os.environ["LOAD_FROM_DB"]=='True'
+print(Load_from_db)
 def create_app(test_config = None):
     # create and configure the app
     app = Flask(__name__, instance_relative_config = True)
@@ -42,9 +40,7 @@ def create_app(test_config = None):
     app.config['SECRET_KEY'] = '5791628bb0b13ce0c676dfde280ba245'
     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
 
-    if 'LOAD_FROM_DB' in os.environ.keys():
-        global Load_from_db
-        Load_from_db = os.environ['LOAD_FROM_DB']
+    
     
     if ('DOCKER_DB_URI' in os.environ.keys()):        
         DOCKER_DB_URI = os.environ['DOCKER_DB_URI']
@@ -77,22 +73,26 @@ def create_app(test_config = None):
         ####################################################
     '''
     #db = None
-    DB_URI = DOCKER_DB_URI + 'anurat'
+    DB_URI = DOCKER_DB_URI + os.environ['DB_NAME']
+    app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
     db = SQLAlchemy(app)
     return app, db
 
 app, db = create_app()
 
 from api.data_struct  import TopicMetaData,ProducerMetaData,ConsumerMetaData,BrokerMetaData,Docker,Manager
-from api.models import TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,localProducerDB,localConsumerDB
+from api.models import TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,DockerDB,localProducerDB,localConsumerDB
 
 def load_from_db():
 
     ############################ Write Pending commits to DB ######################################
+    if not os.path.exists(WAL_path):
+        obj = open(WAL_path,"w")
+        obj.close()
     walFile = open(WAL_path, "r+")
     for line in walFile.readlines():
         exec(line)
-    db.commit.all()
+    db.session.commit()
     #erase the file contents
     walFile.truncate(0)
     walFile.close()
@@ -104,7 +104,7 @@ def load_from_db():
     ################################### Load Topic MetaData  ########################################
     topicMetaData = TopicMetaData()
     for topic in TopicDB.query.all():
-        topicMetaData.Topics[topic.topicName] = (topic.id,topic.numPartitions)
+        topicMetaData.Topics[topic.topicName] = (topic.topic_id,topic.numPartitions)
     for topic in TopicBroker.query.all():
         topicMetaData.PartitionBroker[str(topic.partition)+"#"+topic.topic] = topic.brokerId
     topicMetaData.lock = threading.Lock()
@@ -183,10 +183,15 @@ def hello1():
     return "Hello"
 
 app.app_context().push()
-
-if(Load_from_db):load_from_db()
+print(Load_from_db)
+if(Load_from_db):
+    load_from_db()
 else:
+    db.drop_all()
     db.create_all()
+    db.session.add(DockerDB(id=0))
+    db.session.commit()
+
     
 from api import routes
 

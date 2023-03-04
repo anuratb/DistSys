@@ -4,8 +4,9 @@ import json
 import os, requests, time
 from random import random
 from api.models import TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB,DockerDB
-
+from sqlalchemy_utils.functions import database_exists
 from api import db_host,db_port,db_password,db_username,docker_img_broker
+import subprocess
 
 import psycopg2
 
@@ -28,9 +29,6 @@ class TopicMetaData:
         # A map from partiton#topicName to the corresponding brokerID
         self.PartitionBroker = {}
         self.lock = threading.Lock()
-      #  self.BrokerUrls = set()
-   # def addBrokerUrl(self,url):
-    #    self.BrokerUrls.insert(url)
 
         #No DB updates as assuming broker already created
 
@@ -46,19 +44,20 @@ class TopicMetaData:
         if topicName in self.Topics:
             self.lock.release()
             raise Exception(f'Topicname: {topicName} already exists')
-               
-        self.Topics[topicName] = [len(self.Topics) + 1, numPartitions]
+        topicID = len(self.Topics) + 1
+        self.Topics[topicName] = [topicID, numPartitions]
         self.lock.release()
+
         ########### DB update ##############
-        obj = TopicDB(topicName=topicName,numPartitions=numPartitions,topic_id=len(self.Topics)+1,topicMetaData_id=0)
-        file.write("db.session.add(TopicDB(topicName={},numPartitions={},topic_id={},topicMetaData_id=0))".format(topicName,numPartitions,len(self.Topics)+1))
+        obj = TopicDB(topicName=topicName,numPartitions=numPartitions,topic_id=topicID)
+        file.write("db.session.add(TopicDB(topicName={},numPartitions={},topic_id={}))".format(topicName,numPartitions,topicID))
         db.session.add(obj)
         db.session.commit()
         #########################################
 
 
         # Choose the brokers (TODO how?)
-        Manager.assignBrokers(self.PartitionBroker, numPartitions)
+        Manager.assignBrokers(self.PartitionBroker,topicName, numPartitions)
 
 
     def getSubbedTopicName(self, topicName, partition = 0):
@@ -160,6 +159,7 @@ class ProducerMetaData:
         if L > 2:
             partitionID = int(random() * (L - 1))
         return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][partitionID + 1]
+
 class ConsumerMetaData:
     def __init__(self, cnt = 0):
         # Only stores those clients that subscribe to enitre topic
@@ -248,24 +248,26 @@ class Manager:
     def assignBrokers(cls, PartitionBroker, topicName, numPartitions):
         if(len(cls.brokers) < numPartitions):
             #create partitions on demand
+            print("Creating broker ")
             for i in range(numPartitions - len(cls.brokers)):
                 broker_obj = brokersDocker.build_run("../../broker")
                 cls.lock.acquire()
                 cls.brokers[broker_obj.brokerID] = broker_obj
                 cls.lock.release()
+        print('###################')
         brokerIDs = list(cls.brokers.keys())
         l = len(brokerIDs)
         brokerList = []
         for i in range(numPartitions):
-            brokerList.append(cls.brokers.keys()[int(random() * l)])
-
+            brokerList.append(brokerIDs[int(random() * l)])
+        print('###################')
         for i in range(numPartitions):
             # TODO assign the broker url
             brokerID = brokerList[i]
             brokerTopicName = str(i) + '#' + topicName
             PartitionBroker[brokerTopicName] = brokerID
             
-        
+        print('###################')
         # POST request to each broker to create new topic
         for i in range(numPartitions):
             brokerTopicName = str(i + 1) + '#' + topicName
@@ -374,25 +376,26 @@ class Docker:
 
     def build_run(self,path:str):
         self.lock.acquire()
-        curr_id = cnt
-        cnt+=1
+        curr_id = self.cnt
+        self.cnt+=1
         self.lock.release()
         broker_nme = "broker"+str(curr_id)
+        if(not database_exists('postgresql://{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_port,broker_nme))):
 
-        ############## Create Database #######################
-        conn = psycopg2.connect(
-            user=db_username, password=db_password, host=db_host, port= db_port
-        )
-        conn.autocommit = True
+            ############## Create Database #######################
+            conn = psycopg2.connect(
+                user=db_username, password=db_password, host=db_host, port= db_port
+            )
+            conn.autocommit = True
 
-        cursor = conn.cursor()
-        sql = '''CREATE database {};'''.format(broker_nme)
-        cursor.execute(sql)
-        
-        conn.close()
-        ####################################################
+            cursor = conn.cursor()
+            sql = '''CREATE database {};'''.format(broker_nme)
+            cursor.execute(sql)
+            
+            conn.close()
+            ####################################################
 
-        db_uri = 'postgresql+psycopg2:/{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_host,broker_nme)
+        db_uri = 'postgresql+psycopg2://{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_port,broker_nme)
         #obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
 
         ###################### DB UPDATES ############################
@@ -403,9 +406,13 @@ class Docker:
         #db.session.commit()
         ##############################################################
         docker_id = 0
+        print("broker"+str(curr_id),db_uri,docker_img_broker)
+        os.system("docker run --name {} -d -p 0:5142 --expose 5142 -e DB_URI={} {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
+        obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
+        #print(str(obj))
+        url = obj.decode('utf-8').strip()
+        print(url)
 
-        obj = os.system("docker run --name {} -d -p 0:5142 --expose 5142 -e DB_URI={} {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
-        url = json.loads(str(obj))["NetworkSettings"]["IPAddress"]+":5142/"
         #self.lock.acquire()
         #self.id[broker_nme] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
         #self.lock.release()
@@ -414,17 +421,18 @@ class Docker:
         #TopicMetaData.lock.release()
         broker_obj = BrokerMetaData(db_uri,url,"broker"+str(curr_id),curr_id,docker_id)
         ################# DB UPDATES ########################
+        
         obj = BrokerMetaDataDB(
             broker_id = broker_obj.brokerID, 
-            url = broker_obj.brokerURL,
-            db_uri = broker_obj.db_uri,
+            url = broker_obj.url,
+            db_uri = broker_obj.DB_URI,
             docker_name = broker_obj.docker_name,
             last_beat = broker_obj.last_beat,
             docker_id = broker_obj.docker_id,
 
 
         )
-        file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.brokerURL,broker_obj.db_uri,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
+        file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.url,broker_obj.DB_URI,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
         db.session.add(obj)
         db.session.commit()
         #####################################################

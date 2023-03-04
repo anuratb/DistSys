@@ -16,7 +16,9 @@ class MyQueue:
             res = requests.post(self.url+"/topics",json={
                 "name":topicName
             })
+            print(res.json())
             if(res.json().get("status")=="Success"):
+                print("Sucess")
                 return self.Topic(self,topicName)
             else:
                 #print(str(res.json()))
