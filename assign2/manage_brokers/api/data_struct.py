@@ -264,20 +264,23 @@ class Manager:
         for i in range(numPartitions):
             # TODO assign the broker url
             brokerID = brokerList[i]
-            brokerTopicName = str(i) + '#' + topicName
+            brokerTopicName = str(i + 1) + '#' + topicName
             PartitionBroker[brokerTopicName] = brokerID
             
         print('###################')
         # POST request to each broker to create new topic
         for i in range(numPartitions):
             brokerTopicName = str(i + 1) + '#' + topicName
+            print(brokerTopicName)
+            print(cls.brokers[PartitionBroker[brokerTopicName]].url)
             res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
             json={
                 "name": brokerTopicName
             })
-
+            print(res.json())
             # Broker failure (TODO: what to do?)
             if res.status_code != 200:
+                print("Hello")
                 brokersDocker.restartBroker(cls.brokers[PartitionBroker[brokerTopicName]].brokerID)
                 brokerTopicName = str(i + 1) + '#' + topicName
                 res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
@@ -409,8 +412,7 @@ class Docker:
         print("broker"+str(curr_id),db_uri,docker_img_broker)
         os.system("docker run --name {} -d -p 0:5142 --expose 5142 -e DB_URI={} {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
-        #print(str(obj))
-        url = obj.decode('utf-8').strip()
+        url = 'http://' + obj.decode('utf-8').strip() + ':5142'
         print(url)
 
         #self.lock.acquire()
