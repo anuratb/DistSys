@@ -6,9 +6,13 @@ import json
 import dotenv
 from dotenv import load_dotenv
 import psycopg2
-
+import random
+from sqlalchemy_utils.functions import database_exists
+from api.utils import *
 dotenv_file = dotenv.find_dotenv()
 dotenv.load_dotenv(dotenv_file)
+if 'IS_WRITE' not in os.environ.keys():
+    os.environ['IS_WRITE'] = '1'
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 DOCKER_DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/'
@@ -81,36 +85,64 @@ def create_app(test_config = None):
 app, db = create_app()
 
 from api.data_struct  import TopicMetaData,ProducerMetaData,ConsumerMetaData,BrokerMetaData,Docker,Manager
-from api.models import TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,DockerDB,localProducerDB,localConsumerDB
-from api.data_struct import brokersDocker
+from api.models import ManagerDB,TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,DockerDB,localProducerDB,localConsumerDB
+###############################GLOBALS#####################################
 
+#brokersDocker = Docker()
+IsWriteManager = (int(os.environ["IS_WRITE"])==1)
+random.seed(int(os.environ['RANDOM_SEED']))
+globLock = threading.Lock()
+cntManager = len(ManagerDB.query.all())
+readManagerURL = []
+###########################################################################
+def create_read_manager():
+    
+    manager_nme = "manager"+str(cntManager)
+    #db_uri = create_postgres_db(manager_nme,manager_nme+"_db",db_username,db_password)    
+    db_uri = DOCKER_DB_URI
+    url = create_container(manager_nme,db_uri,docker_img_broker,envs={
+        'IS_WRITE':'0'
+    })      
+    print(url)
+    
+    ################# DB UPDATES ########################
+    
+    db.session.add(ManagerDB(manager_nme,url))
+    db.session.commit()
+    #####################################################
+
+    globLock.acquire()
+    cntManager+=1
+    readManagerURL.append(url)
+    globLock.release()
+    return url
 def load_from_db():
 
     ############################ Write Pending commits to DB ######################################
-    if not os.path.exists(WAL_path):
-        obj = open(WAL_path,"w")
-        obj.close()
-    walFile = open(WAL_path, "r+")
-    for line in walFile.readlines():
-        exec(line)
-    db.session.commit()
+    #if not os.path.exists(WAL_path):
+    #    obj = open(WAL_path,"w")
+    #    obj.close()
+    #walFile = open(WAL_path, "r+")
+    #for line in walFile.readlines():
+    #    exec(line)
+    #db.session.commit()
     #erase the file contents
-    walFile.truncate(0)
-    walFile.close()
+    #walFile.truncate(0)
+    #walFile.close()
     ###############################################################################################
-
+    db.session.rollback()
 
 
 
     ################################### Load Topic MetaData  ########################################
     topicMetaData = TopicMetaData()
     for topic in TopicDB.query.all():
-        topicMetaData.Topics[topic.topicName] = (topic.topic_id,topic.numPartitions)
+        topicMetaData.Topics[topic.topicName] = [topic.topic_id,topic.numPartitions,topic.rrindex]
     for topic in TopicBroker.query.all():
-        topicMetaData.PartitionBroker[str(topic.partition)+"#"+topic.topic] = topic.brokerId
+        topicMetaData.PartitionBroker[str(topic.partition)+"#"+topic.topic] = topic.brokerID
     topicMetaData.lock = threading.Lock()
-    for broker in BrokerMetaDataDB.query.all():
-        topicMetaData.BrokerUrls.insert(broker.url)
+    #for broker in BrokerMetaDataDB.query.all():
+    #    topicMetaData.BrokerUrls.insert(broker.url)
         #BrokerMetaData.brokers[broker.id] = broker.url
     ###############################################################################################
 
@@ -126,7 +158,7 @@ def load_from_db():
         for local in producer.localProducer:
             if(local.broker_id not in agg.keys()):
                 agg[local.broker_id] = []
-            agg[local.broker_id].append(local.local_id)
+            agg[local.broker_id].append([local.local_id,local.partition])
         for brokerId,local_ids in agg.items():
             producers.subscription[str(producer.glob_id)+"#"+producer.topic].append([brokerId,*local_ids])
     ###########################################################################################
@@ -145,7 +177,7 @@ def load_from_db():
         for local in consumer.localConsumer:
             if(local.broker_id not in agg.keys()):
                 agg[local.broker_id] = []
-            agg[local.broker_id].append(local.local_id)
+            agg[local.broker_id].append([local.local_id,local.partition])
         for brokerId,local_ids in agg.items():
             consumers.subscription[str(consumer.glob_id)+"#"+consumer.topic].append([brokerId,*local_ids])
     ###########################################################################################
@@ -160,21 +192,27 @@ def load_from_db():
 
 
     ################################### Load Broker MetaData  #######################################
-    brokersDocker = Docker()
+    #global brokersDocker
+    #brokersDocker = Docker()
     Manager.brokers = {}
     for broker in BrokerMetaDataDB.query.all():
         curr = BrokerMetaData(
-            broker.db_id,
+            broker.db_uri,
             broker.url,
             broker.docker_name,
-            broker.id,
+            broker.broker_id,
             broker.docker_id
 
         )
-        Manager.brokers[broker.id] = curr
-        brokersDocker.brokers[broker.docker_name] = curr.copy()
+        Manager.brokers[broker.broker_id] = curr
+    count = len(BrokerMetaDataDB.query.all())
+    Docker.cnt = len(BrokerMetaDataDB.query.all())
+    nw = Docker.cnt
+        #brokersDocker.brokers[broker.docker_name] = curr
     ###########################################################################################
-
+    cntManager = len(ManagerDB.query.all())
+    for obj in ManagerDB.query.all():
+        readManagerURL.append(obj.url)
 
 
 
@@ -191,9 +229,13 @@ else:
 
 if os.environ['EXECUTE'] == '0':
     os.environ['EXECUTE'] = '1'
+    if IsWriteManager:
+        for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
+            create_read_manager()
+
     for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
 
-        broker_obj = brokersDocker.build_run("../../broker")
+        broker_obj = Docker.build_run("../../broker")
         Manager.lock.acquire()
         Manager.brokers[broker_obj.brokerID] = broker_obj
         Manager.lock.release()

@@ -21,6 +21,7 @@ class TopicDB(db.Model):
     topic_id = db.Column(db.Integer,primary_key=True,nullable=False)
     topicName = db.Column(db.String,primary_key=False,nullable=False)
     numPartitions = db.Column(db.Integer,nullable=False)
+    rrindex = db.Column(db.Integer,nullable=False)
     #topicMetaData_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
 class TopicBroker(db.Model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)
@@ -134,4 +135,9 @@ class BrokerMetaDataDB(db.Model):
 class DockerDB(db.Model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)
     brokers = db.relationship('BrokerMetaDataDB',backref='docker',lazy=True)
+
+############################### FOR Manager ##############################################
+class ManagerDB(db.Model):
+    id = db.Column(db.String,primary_key=True,nullable=False)
+    url = db.Column(db.String,nullable=False)
     

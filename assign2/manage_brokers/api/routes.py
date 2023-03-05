@@ -1,9 +1,11 @@
 
 from flask import request, redirect
 from api import app
-from api.data_struct import brokersDocker, Manager
+from api.data_struct import  Manager,Docker
+from api.models import TopicDB
+from api import db,random
 import requests
-
+from api import IsWriteManager,readManagerURL
 
 '''
     a. CreateTopic
@@ -64,6 +66,7 @@ def create_topic():
 def list_topics():
     try : 
         topic_list = Manager.topicMetaData.getTopicsList()
+        #topic_list = [itr[0] for itr in topic_list] # Get only topic names
         topic_string : str = ", ".join(topic_list)
         
         return {
@@ -188,6 +191,13 @@ def enqueue():
 
     try:
         if producer_id[0] == '$':
+            #Update topic rrindex
+            Manager.topicMetaData.Topics[topic][2]+=1
+            ###################### DB Update ############################
+            obj = TopicDB.query.filter_by(topicName=topic).first()
+            obj.rrindex = Manager.topicMetaData.Topics[topic][2]
+            db.session.commit()
+            #############################################################
             brokerID, prodID,partition = Manager.producerMetaData.getRRIndex(producer_id, topic)
             brokerUrl = Manager.getBrokerUrlFromID(brokerID)
 
@@ -201,6 +211,7 @@ def enqueue():
                 }
             )
             if(res.json().get("status") == "Success"):
+                
                 return {
                     "status": "Success",
                     "message": ""
@@ -243,29 +254,41 @@ def dequeue():
         
         topic: str = request.args.get('topic')
         consumer_id: str = request.args.get('consumer_id')
-        if consumer_id[0] == '$':
-            brokerID, conID,partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
-            brokerUrl = Manager.getBrokerUrlFromID(brokerID)
-            res = requests.get(
-                brokerUrl + "/consumer/consume",
-                params = {
-                    "topic": topic,
-                    "consumer_id": str(conID),
-                    "partition":partition
-                }
-            )
-            if(res.json().get("status") == "Success"):
-                msg = res.json().get("message")
-                return {
-                    "status": "Success",
-                    "message": msg
-                }
-            else:
-                raise Exception(res.json.get("message"))
+
+        if(IsWriteManager):
+            #Update topic rrindex
+            Manager.topicMetaData.Topics[topic][2]+=1
+            ###################### DB Update ############################
+            TopicDB.query.filter_by(topicName=topic).first().rrindex = Manager.topicMetaData.Topics[topic][2]
+            db.session.commit()
+            #############################################################
+            ind = int(random()*len(readManagerURL))
+            target_url = readManagerURL[ind]
+            return redirect(target_url+ "/consumer/consume", 307)#redirect to read manager
         else:
-            partition = request.get_json().get('partition')
-            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-            return redirect(brokerUrl + "/consumer/consumer", 307)
+            if consumer_id[0] == '$':
+                brokerID, conID,partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
+                brokerUrl = Manager.getBrokerUrlFromID(brokerID)
+                res = requests.get(
+                    brokerUrl + "/consumer/consume",
+                    params = {
+                        "topic": topic,
+                        "consumer_id": str(conID),
+                        "partition":partition
+                    }
+                )
+                if(res.json().get("status") == "Success"):
+                    msg = res.json().get("message")
+                    return {
+                        "status": "Success",
+                        "message": msg
+                    }
+                else:
+                    raise Exception(res.json.get("message"))
+            else:
+                partition = request.get_json().get('partition')
+                brokerUrl = Manager.getBrokerUrl(topic, int(partition))
+                return redirect(brokerUrl + "/consumer/consumer", 307)
 
     except Exception as e:
         return {
@@ -310,7 +333,7 @@ def size():
 
 @app.route("/addbroker", methods=["POST","GET"])
 def addBroker():
-    brokersDocker.build_run('../../broker/')
+    return str(Docker.build_run('../../broker/'))
 
 
 @app.route("/removebroker", methods=["POST"])
