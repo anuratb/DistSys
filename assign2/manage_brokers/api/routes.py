@@ -186,40 +186,42 @@ def enqueue():
     #print(request.data)
     #args = request.get_json()
     print(type(request.get_json()))
-    topic: str = request.data.get('topic')
-    producer_id: str = request.data.get('producer_id')
-    message: str = request.data.get('message')
-    partition = request.data.get('partition')
-    if producer_id[0] == '$':
-        brokerID, prodID = Manager.producerMetaData.getRRIndex(producer_id, topic)
-        brokerUrl = Manager.getBrokerUrlFromID(brokerID)
+    topic: str = request.get_json().get('topic')
+    producer_id: str = request.get_json().get('producer_id')
+    message: str = request.get_json().get('message')
+    partition = request.get_json().get('partition')
+    print(topic, producer_id, message, partition)
+    try:
+        if producer_id[0] == '$':
+            brokerID, prodID = Manager.producerMetaData.getRRIndex(producer_id, topic)
+            brokerUrl = Manager.getBrokerUrlFromID(brokerID)
 
-        res = requests.get(
-            brokerUrl + "/producer/produce",
-            params = {
-                "topic": topic,
-                "producer_id": prodID,
-                "message":message
-            }
-        )
-        if(res.json().get("status") == "Success"):
-            return {
-                "status": "Success",
-                "message": ""
-            }
+            res = requests.post(
+                brokerUrl + "/producer/produce",
+                json = {
+                    "topic": topic,
+                    "producer_id": prodID,
+                    "message":message
+                }
+            )
+            if(res.json().get("status") == "Success"):
+                return {
+                    "status": "Success",
+                    "message": ""
+                }
+            else:
+                raise Exception(res.json.get("message"))
         else:
-            raise Exception(res.json.get("message"))
-    else:
-        partition = request.get_json().get('partition')
-        brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-        return redirect(brokerUrl + "/producer/produce", 307)
-    '''
+            partition = request.get_json().get('partition')
+            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
+            return redirect(brokerUrl + "/producer/produce", 307)
+     
     except Exception as e:
         return {
             "status": "Failure",
             "message": str(e)
         }
-    '''
+  
 
 '''
     f. Dequeue

@@ -51,12 +51,16 @@ class MyQueue:
             for topicName in topicNames:
                 # Check if producer is already registered in topicName
                 if topicName in ids: continue
-                res = requests.post(
-                    self.url+"/producer/register",
-                    json={
+                print("Trying to create producer")
+                json={
                         "topic":topicName,
                         "partition":partition
-                    })
+                    }
+                print(json)
+                res = requests.post(
+                    self.url+"/producer/register",
+                    json=json
+                    )
                 if(res.json().get("status")!="Success"):
                     raise Exception(res.json().get("message"))
                 else:
@@ -145,6 +149,22 @@ class MyQueue:
             if(topicName not in self.pids.keys()):
                 raise Exception("Error: Topic {} not registered".format(topicName))
             try:
+
+                id = self.pids[topicName]
+                print("Trying to create producer")
+                json={
+                        "topic":topicName,
+                        "producer_id":id,
+                        "message":msg,
+                        "partition":None
+                    }
+                print(json)
+                res = requests.post(
+                    self.outer.url+"/producer/produce",
+                    json=json
+                    )
+
+                '''
                 id = self.pids[topicName]
                 json={
                         "topic":topicName,
@@ -158,6 +178,7 @@ class MyQueue:
                     self.outer.url+"/producer/produce",
                     json=json
                 )
+                '''
                 if(res.json().get("status")=="Success"):
                     return 0
                 else:

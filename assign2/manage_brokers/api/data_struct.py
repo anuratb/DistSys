@@ -127,22 +127,27 @@ class ProducerMetaData:
     Returns the brokerID and prodID to which the message should be sent
     '''
     def getRRIndex(self, clientID, topicName):
+        #TODO
 
-
-
-        current_index = globalProducerDB.query.filter_by(glob_id=clientID,topic=topicName).first().rrindex
-        cnt = len(BrokerMetaDataDB.query.all())
+        globProd = globalProducerDB.query.filter_by(glob_id=clientID,topic=topicName).first()
+        #current_index = globProd.rrindex
+        cnt = len(globProd.localProducer)
+        ind = int(random() * (cnt-1))
+        '''
         obj = BrokerMetaDataDB.query.filter_by(broker_id=current_index).first()
         L = len(BrokerMetaDataDB.query.filter_by(broker_id=current_index))
         partitionID = 0
         if L > 2:
             partitionID = int(random() * (L - 1))
         brokerID = obj.broker_id
-        prodID = obj.localProd[partitionID].local_id
-        current_index = (current_index + 1) % cnt
+        '''
+        localProd = globProd.localProducer[ind]
+        prodID= localProd.local_id
+        brokerID = localProd.broker_id
+        #current_index = (current_index + 1) % cnt
         ########### DB update ##############
-        globalProducerDB.query.filter_by(glob_id=clientID,topic=topicName).first().rrindex=current_index
-        db.session.commit()
+        #globalProducerDB.query.filter_by(glob_id=clientID,topic=topicName).first().rrindex=current_index
+        #db.session.commit()
         #########################################
         return brokerID, prodID
 
