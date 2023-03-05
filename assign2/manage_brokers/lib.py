@@ -12,7 +12,7 @@ class MyQueue:
 
     def createTopic(self,topicName:str):
         try:
-            #print(str("^^^^^^")+topicName)
+            print(str("^^^^^^")+topicName)
             res = requests.post(self.url+"/topics",json={
                 "name":topicName
             })
@@ -125,7 +125,7 @@ class MyQueue:
                     json["partition"] = self.partition
                 res = requests.post(
                     self.url+"/producer/register",
-                    json
+                    json=json
                 )
                 if(res.json().get("status") != "Success"):
                     raise Exception(res.json().get("message"))
@@ -141,20 +141,22 @@ class MyQueue:
         returns 0 if success
         '''
         def enqueue(self,msg:str,topicName:str):
+            print("Trying To Enqueue")
             if(topicName not in self.pids.keys()):
                 raise Exception("Error: Topic {} not registered".format(topicName))
             try:
                 id = self.pids[topicName]
                 json={
-                    "topic":topicName,
-                    "producer_id":id,
-                    "message":msg
-                }
-                if(self.partition) :
-                    json["partition"] = self.partition
+                        "topic":topicName,
+                        "producer_id":id,
+                        "message":msg,
+                        "partition":self.partition
+                    }
+                print(json)
+                print('%%%%%%%%%%%%%%%%%%%%%%')
                 res = requests.post(
                     self.outer.url+"/producer/produce",
-                    json
+                    json=json
                 )
                 if(res.json().get("status")=="Success"):
                     return 0
@@ -198,7 +200,7 @@ class MyQueue:
                     json["partition"] = self.partition
                 res = requests.post(
                     self.url+"/consumer/register",
-                    json
+                    json=json
                 )
                 if(res.json().get("status") != "Success"):
                     raise Exception(res.json().get("message"))
@@ -226,7 +228,7 @@ class MyQueue:
                     params["partition"] = self.partition
                 res = requests.get(
                     self.outer.url+"/consumer/consume",
-                    params
+                    params=params
                 )
                 if(res.json().get("status")=="Success"):
                     return res.json().get("message")

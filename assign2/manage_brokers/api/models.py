@@ -45,7 +45,7 @@ local_id
 
 
 class globalProducerDB(db.Model):
-    glob_id = db.Column(db.Integer,primary_key=True,nullable=False)
+    glob_id = db.Column(db.String,primary_key=True,nullable=False)
     rrindex = db.Column(db.Integer,nullable=False)
     topic = db.Column(db.String,nullable=False)
     localProducer = db.relationship('localProducerDB',backref='globalProducer',lazy=True)
@@ -55,7 +55,7 @@ class localProducerDB(db.Model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)
     local_id = db.Column(db.Integer,primary_key=False,nullable=False)
     broker_id = db.Column(db.Integer,db.ForeignKey('broker_meta_data_db.broker_id'),nullable=False)
-    glob_id = db.Column(db.Integer,db.ForeignKey('global_producer_db.glob_id'),nullable=False)
+    glob_id = db.Column(db.String,db.ForeignKey('global_producer_db.glob_id'),nullable=False)
 
 
 
@@ -80,7 +80,7 @@ class ProdTopicBroker(db.Model):
 ######################### FOR CONSUMER METADATA #################################
 
 class globalConsumerDB(db.Model):
-    glob_id = db.Column(db.Integer,primary_key=True,nullable=False)
+    glob_id = db.Column(db.String,primary_key=True,nullable=False)
     rrindex = db.Column(db.Integer,nullable=False)
     topic = db.Column(db.String,nullable=False)
     localConsumer = db.relationship('localConsumerDB',backref='globalConsumer',lazy=True)
@@ -90,7 +90,7 @@ class localConsumerDB(db.Model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)
     local_id = db.Column(db.Integer,primary_key=False,nullable=False)
     broker_id = db.Column(db.Integer,db.ForeignKey('broker_meta_data_db.broker_id'),nullable=False)
-    glob_id = db.Column(db.Integer,db.ForeignKey('global_consumer_db.glob_id'),nullable=False)
+    glob_id = db.Column(db.String,db.ForeignKey('global_consumer_db.glob_id'),nullable=False)
 
 '''
 class ConsumerMetaDataDB(db.Model):

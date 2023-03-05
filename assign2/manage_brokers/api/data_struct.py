@@ -266,12 +266,26 @@ class Manager:
             brokerID = brokerList[i]
             brokerTopicName = str(i + 1) + '#' + topicName
             PartitionBroker[brokerTopicName] = brokerID
+            ####################### DB UPDATES ###########################
+            db.session.add(TopicBroker(
+                topic = topicName,
+                brokerID = brokerID,
+                partition = i+1))
+            file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName,brokerID,i+1))    
+        db.session.commit()
             
         print('###################')
+        
         # POST request to each broker to create new topic
         for i in range(numPartitions):
             brokerTopicName = str(i + 1) + '#' + topicName
             print(brokerTopicName)
+            cur_url= cls.brokers[PartitionBroker[brokerTopicName]].url.split(':')[1].split('/')[-1]
+            while(True):
+                time.sleep(1)
+                res = os.system("ping -c 1 "+cur_url)
+                if(res == 0):
+                    break
             print(cls.brokers[PartitionBroker[brokerTopicName]].url)
             res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
             json={
@@ -299,7 +313,7 @@ class Manager:
 
     @classmethod
     def registerClientForAllPartitions(cls, url, topicName, isProducer):
-        if topicName not in Manager.topicMetaData.Topics[topicName]:
+        if topicName not in Manager.topicMetaData.Topics.keys():
             raise Exception(f"Topic {topicName} doesn't exist")
 
         numPartitions = Manager.topicMetaData.Topics[topicName][1]
@@ -383,20 +397,31 @@ class Docker:
         self.cnt+=1
         self.lock.release()
         broker_nme = "broker"+str(curr_id)
-        if(not database_exists('postgresql://{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_port,broker_nme))):
-
-            ############## Create Database #######################
+        if(database_exists('postgresql://{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_port,broker_nme))):
             conn = psycopg2.connect(
                 user=db_username, password=db_password, host=db_host, port= db_port
             )
             conn.autocommit = True
 
             cursor = conn.cursor()
-            sql = '''CREATE database {};'''.format(broker_nme)
+            sql = '''DROP database {};'''.format(broker_nme)
             cursor.execute(sql)
             
             conn.close()
-            ####################################################
+        ############## Create Database #######################
+        conn = psycopg2.connect(
+            user=db_username, password=db_password, host=db_host, port= db_port
+        )
+        conn.autocommit = True
+
+        cursor = conn.cursor()
+        sql = '''CREATE database {};'''.format(broker_nme)
+        cursor.execute(sql)
+        
+        conn.close()
+        ####################################################
+        
+            
 
         db_uri = 'postgresql+psycopg2://{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_port,broker_nme)
         #obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
@@ -410,9 +435,10 @@ class Docker:
         ##############################################################
         docker_id = 0
         print("broker"+str(curr_id),db_uri,docker_img_broker)
-        os.system("docker run --name {} -d -p 0:5142 --expose 5142 -e DB_URI={} {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
+        os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
+        print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
-        url = 'http://' + obj.decode('utf-8').strip() + ':5142'
+        url = 'http://' + obj.decode('utf-8').strip() + ':5124'
         print(url)
 
         #self.lock.acquire()
@@ -473,8 +499,8 @@ class Docker:
         ##############################################################
         docker_id = 0
 
-        obj = os.system("docker run --name {} -d -p 0:5142 --expose 5142 -e DB_URI={} {}".format(new_broker_nme,db_uri,docker_img_broker))
-        url = json.loads(str(obj))["NetworkSettings"]["IPAddress"]+":5142/"
+        obj = os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} {}".format(new_broker_nme,db_uri,docker_img_broker))
+        url = json.loads(str(obj))["NetworkSettings"]["IPAddress"]+":5124/"
         self.lock.acquire()
         #self.id[new_broker_nme] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
         #self.lock.release()

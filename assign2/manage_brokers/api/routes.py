@@ -28,6 +28,7 @@ import requests
 '''
 @ app.route("/topics", methods=['POST'])
 def create_topic():
+    print('Create Topic')
     topic_name : str = request.get_json().get('name')
     try:
         Manager.topicMetaData.addTopic(topic_name)
@@ -181,40 +182,44 @@ def register_producer():
 
 @ app.route("/producer/produce", methods=['POST'])
 def enqueue():
-    try:
-        topic: str = request.get_json().get('topic')
-        producer_id: str = request.get_json().get('producer_id')
-        message: str = request.get_json().get('message')
-        partition = request.get_json().get('partition')
-        if producer_id[0] == '$':
-            brokerID, prodID = Manager.producerMetaData.getRRIndex(producer_id, topic)
-            brokerUrl = Manager.getBrokerUrlFromID(brokerID)
+    
+    #print(request.data)
+    #args = request.get_json()
+    print(type(request.get_json()))
+    topic: str = request.data.get('topic')
+    producer_id: str = request.data.get('producer_id')
+    message: str = request.data.get('message')
+    partition = request.data.get('partition')
+    if producer_id[0] == '$':
+        brokerID, prodID = Manager.producerMetaData.getRRIndex(producer_id, topic)
+        brokerUrl = Manager.getBrokerUrlFromID(brokerID)
 
-            res = requests.get(
-                brokerUrl + "/producer/produce",
-                params = {
-                    "topic": topic,
-                    "producer_id": prodID,
-                    "message":message
-                }
-            )
-            if(res.json().get("status") == "Success"):
-                return {
-                    "status": "Success",
-                    "message": ""
-                }
-            else:
-                raise Exception(res.json.get("message"))
+        res = requests.get(
+            brokerUrl + "/producer/produce",
+            params = {
+                "topic": topic,
+                "producer_id": prodID,
+                "message":message
+            }
+        )
+        if(res.json().get("status") == "Success"):
+            return {
+                "status": "Success",
+                "message": ""
+            }
         else:
-            partition = request.get_json().get('partition')
-            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-            return redirect(brokerUrl + "/producer/produce", 307)
-
+            raise Exception(res.json.get("message"))
+    else:
+        partition = request.get_json().get('partition')
+        brokerUrl = Manager.getBrokerUrl(topic, int(partition))
+        return redirect(brokerUrl + "/producer/produce", 307)
+    '''
     except Exception as e:
         return {
             "status": "Failure",
             "message": str(e)
         }
+    '''
 
 '''
     f. Dequeue
@@ -304,7 +309,7 @@ def size():
             }
 
 
-@app.route("/addbroker", methods=["POST"])
+@app.route("/addbroker", methods=["POST","GET"])
 def addBroker():
     brokersDocker.build_run('../../broker/')
 

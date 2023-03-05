@@ -48,11 +48,11 @@ def create_app(test_config = None):
     #print(postgres_container)
     obj = json.loads(os.popen("docker inspect '{}'".format(postgres_container)).read())
     #print(obj[0].keys())
-    global db_host
+    #global db_host
     #print(obj[0]['NetworkSettings']['IPAddress'])
-    db_host = obj[0]['NetworkSettings']['IPAddress']
-    global db_port
-    db_port = 5432
+    #db_host = obj[0]['NetworkSettings']['IPAddress']
+    #global db_port
+    #db_port = 5432
     DOCKER_DB_URI = 'postgresql+psycopg2://'+db_username+':'+db_password+'@'+db_host+':'+str(db_port)+'/'
     '''
     if(Load_from_db == False):
