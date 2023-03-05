@@ -239,8 +239,6 @@ def enqueue():
 
 @ app.route("/consumer/consume", methods=['GET'])
 def dequeue():
-    print(request)
-    
     try:
         
         topic: str = request.args.get('topic')

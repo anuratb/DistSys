@@ -6,10 +6,10 @@ import json
 import dotenv
 from dotenv import load_dotenv
 import psycopg2
-# load_dotenv()
+
 dotenv_file = dotenv.find_dotenv()
 dotenv.load_dotenv(dotenv_file)
-# print(os.environ)
+
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 DOCKER_DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/'
 WAL_path = "./temp.txt"
@@ -83,6 +83,7 @@ app, db = create_app()
 from api.data_struct  import TopicMetaData,ProducerMetaData,ConsumerMetaData,BrokerMetaData,Docker,Manager
 from api.models import TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,DockerDB,localProducerDB,localConsumerDB
 from api.data_struct import brokersDocker
+
 def load_from_db():
 
     ############################ Write Pending commits to DB ######################################
@@ -176,14 +177,9 @@ def load_from_db():
 
 
 
-    #print(Queue.queue)
-# a simple page that says hello
-@app.route('/hello1')
-def hello1():
-    return "Hello"
 
 app.app_context().push()
-print(Load_from_db)
+
 if(Load_from_db):
     load_from_db()
 else:
@@ -191,12 +187,16 @@ else:
     db.create_all()
     db.session.add(DockerDB(id=0))
     db.session.commit()
-for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
 
-    broker_obj = brokersDocker.build_run("../../broker")
-    Manager.lock.acquire()
-    Manager.brokers[broker_obj.brokerID] = broker_obj
-    Manager.lock.release()
+
+if os.environ['EXECUTE'] == '0':
+    os.environ['EXECUTE'] = '1'
+    for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
+
+        broker_obj = brokersDocker.build_run("../../broker")
+        Manager.lock.acquire()
+        Manager.brokers[broker_obj.brokerID] = broker_obj
+        Manager.lock.release()
 
    
 from api import routes
