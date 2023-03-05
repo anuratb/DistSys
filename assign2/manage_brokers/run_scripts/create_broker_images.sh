@@ -1,1 +1,1 @@
-docker build -t "test:latest" ../../../broker/ 
+docker build -t "test:latest" ../../broker/ 

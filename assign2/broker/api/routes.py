@@ -215,7 +215,7 @@ def dequeue():
     
     try :
         topicName: str = request.args.get('topic', type=str)
-        partition = request.get_json().get("partition")
+        partition = request.args.get("partition")
         consumer_id: int = request.args.get('consumer_id', type=int)
         topic = str(partition) + '#' + topicName
 
@@ -252,7 +252,7 @@ def dequeue():
 @ app.route("/size", methods=['GET'])
 def size():
     topicName : str = request.args.get('topic' , type=str) 
-    partition = request.get_json().get("partition")
+    partition = request.args.get("partition")
     consumer_id : int = request.args.get('consumer_id', type=int)
     topic = str(partition) + '#' + topicName
     

@@ -191,15 +191,13 @@ else:
     db.create_all()
     db.session.add(DockerDB(id=0))
     db.session.commit()
+for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
 
-broker_obj = brokersDocker.build_run("../../broker")
-Manager.lock.acquire()
-Manager.brokers[broker_obj.brokerID] = broker_obj
-Manager.lock.release()
-broker_obj = brokersDocker.build_run("../../broker")
-Manager.lock.acquire()
-Manager.brokers[broker_obj.brokerID] = broker_obj
-Manager.lock.release()
+    broker_obj = brokersDocker.build_run("../../broker")
+    Manager.lock.acquire()
+    Manager.brokers[broker_obj.brokerID] = broker_obj
+    Manager.lock.release()
+
    
 from api import routes
 
