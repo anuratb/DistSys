@@ -1,0 +1,5 @@
+*.pyc
+./.gitignore
+venv/
+token.txt
+./config.json
