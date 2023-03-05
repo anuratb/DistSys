@@ -182,18 +182,13 @@ def register_producer():
 
 @ app.route("/producer/produce", methods=['POST'])
 def enqueue():
-    
-    #print(request.data)
-    #args = request.get_json()
-    print(type(request.get_json()))
     topic: str = request.get_json().get('topic')
     producer_id: str = request.get_json().get('producer_id')
     message: str = request.get_json().get('message')
-    partition = request.get_json().get('partition')
-    print(topic, producer_id, message, partition)
+
     try:
         if producer_id[0] == '$':
-            brokerID, prodID = Manager.producerMetaData.getRRIndex(producer_id, topic)
+            brokerID, prodID,partition = Manager.producerMetaData.getRRIndex(producer_id, topic)
             brokerUrl = Manager.getBrokerUrlFromID(brokerID)
 
             res = requests.post(
@@ -201,7 +196,8 @@ def enqueue():
                 json = {
                     "topic": topic,
                     "producer_id": prodID,
-                    "message":message
+                    "message":message,
+                    "partition":partition
                 }
             )
             if(res.json().get("status") == "Success"):
@@ -243,18 +239,21 @@ def enqueue():
 
 @ app.route("/consumer/consume", methods=['GET'])
 def dequeue():
+    print(request)
+    
     try:
+        
         topic: str = request.get_json().get('topic')
         consumer_id: str = request.get_json().get('consumer_id')
-
         if consumer_id[0] == '$':
-            brokerID, conID = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
+            brokerID, conID,partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
             brokerUrl = Manager.getBrokerUrlFromID(brokerID)
             res = requests.get(
                 brokerUrl + "/consumer/consume",
                 params = {
                     "topic": topic,
-                    "consumer_id": str(conID)
+                    "consumer_id": str(conID),
+                    "partition":partition
                 }
             )
             if(res.json().get("status") == "Success"):

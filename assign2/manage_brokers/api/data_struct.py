@@ -79,7 +79,7 @@ class ProducerMetaData:
     def __init__(self, cnt = 0):
         # Only stores those clients that subscribe to enitre topic
         # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
-        # corresponding prodIDs
+        # corresponding (prodIDs, partitionNo)
         self.subscription = {}
         # Map from clientID#TopicName to round-robin index
         self.rrIndex = {}
@@ -104,9 +104,9 @@ class ProducerMetaData:
             broker_id = row[0] 
             prod_ids = row[1:]
             local_prods = []
-            for prod_id in prod_ids:
-                local_prods.append(localProducerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID))
-                file.write("db.session.add(localProducerDB(local_id = {},broker_id = {},glob_id = {}))".format(prod_id,broker_id,clientID))
+            for prod_id,partition in prod_ids:
+                local_prods.append(localProducerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID,partition=partition))
+                file.write("db.session.add(localProducerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
         db.session.add(glob_prod)
         
         for local_prod in local_prods:
@@ -132,7 +132,7 @@ class ProducerMetaData:
         globProd = globalProducerDB.query.filter_by(glob_id=clientID,topic=topicName).first()
         #current_index = globProd.rrindex
         cnt = len(globProd.localProducer)
-        ind = int(random() * (cnt-1))
+        ind = int(random() * (cnt))
         '''
         obj = BrokerMetaDataDB.query.filter_by(broker_id=current_index).first()
         L = len(BrokerMetaDataDB.query.filter_by(broker_id=current_index))
@@ -143,13 +143,14 @@ class ProducerMetaData:
         '''
         localProd = globProd.localProducer[ind]
         prodID= localProd.local_id
+        partition = localProd.partition
         brokerID = localProd.broker_id
         #current_index = (current_index + 1) % cnt
         ########### DB update ##############
         #globalProducerDB.query.filter_by(glob_id=clientID,topic=topicName).first().rrindex=current_index
         #db.session.commit()
         #########################################
-        return brokerID, prodID
+        return brokerID, prodID,partition
 
         if topicName not in Manager.topicMetaData.Topics:
             raise Exception(f"Topic {topicName} doesn't exist")
@@ -159,17 +160,17 @@ class ProducerMetaData:
         self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K])
         self.rrIndexLock[K].release()
         
-        L = len(self.subscription[K][nextBroker])
-        partitionID = 0
+        index = 0
         if L > 2:
-            partitionID = int(random() * (L - 1))
-        return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][partitionID + 1]
+            index = int(random() * (L - 1))
+        return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][index + 1][0], self.subscription[K][nextBroker][index + 1][1]
+
 
 class ConsumerMetaData:
     def __init__(self, cnt = 0):
         # Only stores those clients that subscribe to enitre topic
         # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
-        # corresponding prodIDs
+        # corresponding (conIDs, partitionNo)
         self.subscription = {}
         # Map from clientID#TopicName to round-robin index
         self.rrIndex = {}
@@ -195,9 +196,9 @@ class ConsumerMetaData:
             broker_id = row[0] 
             prod_ids = row[1:]
             local_prods = []
-            for prod_id in prod_ids:
-                local_prods.append(localConsumerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID))
-                file.write("db.session.add(localConsumerDB(local_id = {},broker_id = {},glob_id = {}))".format(prod_id,broker_id,clientID))
+            for prod_id,partition in prod_ids:
+                local_prods.append(localConsumerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID,partition=partition))
+                file.write("db.session.add(localConsumerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
         db.session.add(glob_prod)
         for local_prod in local_prods:
             db.session.add(local_prod)
@@ -223,10 +224,10 @@ class ConsumerMetaData:
         self.rrIndexLock[K].release()
         
         L = len(self.subscription[K][nextBroker])
-        partitionID = 0
+        index = 0
         if L > 2:
-            partitionID = int(random() * (L - 1))
-        return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][partitionID + 1]
+            index = int(random() * (L - 1))
+        return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][index + 1][0], self.subscription[K][nextBroker][index + 1][1]
 
 '''
 class ProducerMetaData(ClientMetaData):
@@ -348,7 +349,7 @@ class Manager:
                     ID = res.json().get("consumer_id")
                 if brokerID not in brokerMap:
                     brokerMap[brokerID] = []
-                brokerMap[brokerID].append(ID)
+                brokerMap[brokerID].append((ID, i))
 
         for brokerID in brokerMap.keys():
             arr = [brokerID]
@@ -537,3 +538,4 @@ class VM:
 ###############################GLOBALS#####################################
 
 brokersDocker = Docker()
+

@@ -1,5 +1,5 @@
 *.pyc
-./.gitignore
+.gitignore
 venv/
 token.txt
 ./config.json

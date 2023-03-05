@@ -76,26 +76,26 @@ class MyQueue:
     @return Consumer Object
     '''
     def createConsumer(self,topicNames:list,partition = None):
-        try:
-            ids = {}
-            for topicName in topicNames:
-                # Check if consumer is already registered in topicName
-                if topicName in ids: continue
-                res = requests.post(
-                    self.url+"/consumer/register",
-                    json={
-                        "topic":topicName,
-                        "partition":partition
-                    })
-                if(res.json().get("status")!="Success"):
-                    raise Exception(res.json().get("message"))
-                else:
-                    cid = res.json().get("consumer_id")
-                    ids[topicName] = cid
-            return self.Consumer(self,ids,partition)                
+        #try:
+        ids = {}
+        for topicName in topicNames:
+            # Check if consumer is already registered in topicName
+            if topicName in ids: continue
+            res = requests.post(
+                self.url+"/consumer/register",
+                json={
+                    "topic":topicName,
+                    "partition":partition
+                })
+            if(res.json().get("status")!="Success"):
+                raise Exception(res.json().get("message"))
+            else:
+                cid = res.json().get("consumer_id")
+                ids[topicName] = cid
+        return self.Consumer(self,ids,partition)                
 
-        except Exception as err:
-            raise str(err)
+        #except Exception as err:
+         #   raise str(err)
     '''
     Topic class
     '''

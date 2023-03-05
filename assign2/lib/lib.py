@@ -169,7 +169,7 @@ class MyQueue:
                 # Check if producer is already registered in topicName
                 if topicName in self.cids: return
                 res = requests.post(
-                    self.url+"/consumer/register",
+                    self.outer.url+"/consumer/register",
                     json={
                         "topic": topicName
                     }
@@ -191,12 +191,15 @@ class MyQueue:
                 raise Exception("Error: Topic not registered")
             try:
                 id = self.cids[topicName]
-                res = requests.get(
-                    self.outer.url+"/consumer/consume",
-                    params={
+                print(self.outer.url+"/consumer/consume")
+                json = {
                         "topic":topicName,
                         "consumer_id":id
                     }
+                print(json)
+                res = requests.get(
+                    self.outer.url+"/consumer/consume",
+                    params=json
                 )
                 if(res.json().get("status")=="Success"):
                     return res.json().get("message")

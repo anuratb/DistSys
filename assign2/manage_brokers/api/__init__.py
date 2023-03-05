@@ -82,7 +82,7 @@ app, db = create_app()
 
 from api.data_struct  import TopicMetaData,ProducerMetaData,ConsumerMetaData,BrokerMetaData,Docker,Manager
 from api.models import TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,DockerDB,localProducerDB,localConsumerDB
-
+from api.data_struct import brokersDocker
 def load_from_db():
 
     ############################ Write Pending commits to DB ######################################
@@ -192,7 +192,15 @@ else:
     db.session.add(DockerDB(id=0))
     db.session.commit()
 
-    
+broker_obj = brokersDocker.build_run("../../broker")
+Manager.lock.acquire()
+Manager.brokers[broker_obj.brokerID] = broker_obj
+Manager.lock.release()
+broker_obj = brokersDocker.build_run("../../broker")
+Manager.lock.acquire()
+Manager.brokers[broker_obj.brokerID] = broker_obj
+Manager.lock.release()
+   
 from api import routes
 
  
