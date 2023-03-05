@@ -3,6 +3,7 @@ from flask import request, redirect
 from api import app
 from api.data_struct import brokersDocker, Manager
 import requests
+from api.models import TopicBroker
 
 
 '''
@@ -194,8 +195,10 @@ def enqueue():
     try:
         if producer_id[0] == '$':
             brokerID, prodID = Manager.producerMetaData.getRRIndex(producer_id, topic)
+            partition_no = TopicBroker.query.filter_by(topic=topic, broker_id=brokerID).first().partition
             brokerUrl = Manager.getBrokerUrlFromID(brokerID)
-
+            #TODO how to add partition no to request the 
+            #above is wrong for same topic and broker id can be different partitionss
             res = requests.post(
                 brokerUrl + "/producer/produce",
                 json = {

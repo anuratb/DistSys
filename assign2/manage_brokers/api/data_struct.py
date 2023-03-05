@@ -100,12 +100,12 @@ class ProducerMetaData:
         ################## DB Updates #####################
         glob_prod = globalProducerDB(glob_id=clientID,topic = topicName,rrindex=0,brokerCnt = len(clientIDs))
         file.write("db.session.add(globalProducerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
-        for row in clientIDs:
+        for row in clientIDs:#Warning input should be in partition id order
             broker_id = row[0] 
             prod_ids = row[1:]
             local_prods = []
-            for prod_id in prod_ids:
-                local_prods.append(localProducerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID))
+            for prod_id,partition_no in prod_ids:
+                local_prods.append(localProducerDB(local_id = prod_id,partition=partition_no,broker_id = broker_id,glob_id = clientID))
                 file.write("db.session.add(localProducerDB(local_id = {},broker_id = {},glob_id = {}))".format(prod_id,broker_id,clientID))
         db.session.add(glob_prod)
         
@@ -324,7 +324,9 @@ class Manager:
         numPartitions = Manager.topicMetaData.Topics[topicName][1]
         IDs = []
         brokerMap = {}
+        #for obj in TopicBroker.query.filter_by(topic=topicName).all():
         for i in range(1, numPartitions + 1):
+            #i = obj.partition
             brokerTopicName = str(i) + '#' + topicName
             brokerID = cls.topicMetaData.getBrokerID(brokerTopicName)
             brokerUrl = cls.getBrokerUrlFromID(brokerID)
@@ -348,7 +350,7 @@ class Manager:
                     ID = res.json().get("consumer_id")
                 if brokerID not in brokerMap:
                     brokerMap[brokerID] = []
-                brokerMap[brokerID].append(ID)
+                brokerMap[brokerID].append((ID, i))
 
         for brokerID in brokerMap.keys():
             arr = [brokerID]
