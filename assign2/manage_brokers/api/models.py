@@ -56,7 +56,7 @@ class localProducerDB(db.Model):
     local_id = db.Column(db.Integer,primary_key=False,nullable=False)
     broker_id = db.Column(db.Integer,db.ForeignKey('broker_meta_data_db.broker_id'),nullable=False)
     glob_id = db.Column(db.String,db.ForeignKey('global_producer_db.glob_id'),nullable=False)
-    partition = db.Column(db.Integer,nullable=False)
+
 
 
 '''
