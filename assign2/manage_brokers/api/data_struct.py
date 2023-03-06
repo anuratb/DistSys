@@ -7,7 +7,7 @@ from api.models import TopicDB,TopicBroker,globalProducerDB,localProducerDB,glob
 from sqlalchemy_utils.functions import database_exists
 from api import db_host,db_port,db_password,db_username,docker_img_broker
 import subprocess
-from utils import *
+from api.utils import *
 import psycopg2
 
 
@@ -45,19 +45,30 @@ class TopicMetaData:
             self.lock.release()
             raise Exception(f'Topicname: {topicName} already exists')
         topicID = len(self.Topics) + 1
-        self.Topics[topicName] = [topicID, numPartitions,0]
+        self.Topics[topicName] = [topicID, numPartitions, 0]
         self.lock.release()
+
+        # Choose the brokers (TODO how?)
+        numPartitions, assignedBrokers = Manager.assignBrokers(topicName, numPartitions)
+
+        # All Brokers are down
+        if numPartitions == 0:
+            del self.Topics[topicName]
+            raise Exception("Service currently unavailable. Please try again later.")
+
+        # Now update with actual no of paritions created
+        self.Topics[topicName][1] = numPartitions
+
+        for K in assignedBrokers.keys():
+            self.PartitionBroker[K] = assignedBrokers[K]
 
         ########### DB update ##############
         obj = TopicDB(topicName=topicName,numPartitions=numPartitions,topic_id=topicID,rrindex=0)
-        file.write("db.session.add(TopicDB(topicName={},numPartitions={},topic_id={}))".format(topicName,numPartitions,topicID))
+        file.write("db.session.add(TopicDB(topicName={},numPartitions={},topic_id={}, rrindex=0))".format(topicName,numPartitions,topicID))
         db.session.add(obj)
         db.session.commit()
         #########################################
 
-
-        # Choose the brokers (TODO how?)
-        Manager.assignBrokers(self.PartitionBroker,topicName, numPartitions)
 
 
     def getSubbedTopicName(self, topicName, partition = 0):
@@ -156,7 +167,7 @@ class ProducerMetaData:
         #globalProducerDB.query.filter_by(glob_id=clientID,topic=topicName).first().rrindex=current_index
         #db.session.commit()
         #########################################
-        return brokerID, prodID,partition
+        return brokerID, prodID, partition
 
         if topicName not in Manager.topicMetaData.Topics:
             raise Exception(f"Topic {topicName} doesn't exist")
@@ -245,20 +256,8 @@ class ConsumerMetaData:
         #    index = int(random() * (L - 1))
         #return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][index + 1][0], self.subscription[K][nextBroker][index + 1][1]
 
-'''
-class ProducerMetaData(ClientMetaData):
-    
-    def __init__(self, producerCnt_ = 0):
-        ClientMetaData.__init__(self, producerCnt_)
-
-class ConsumerMetaData(ClientMetaData):
-
-    def __init__(self, consumersCnt_ = 0):
-        ClientMetaData.__init__(self, consumersCnt_)
-'''
 class Manager:
     topicMetaData = TopicMetaData()
-   
     consumerMetaData = ConsumerMetaData()
     producerMetaData = ProducerMetaData()
     # A map from broker ID to broker Metadata
@@ -267,64 +266,77 @@ class Manager:
     brokers = {}
 
     @classmethod
-    def assignBrokers(cls, PartitionBroker, topicName, numPartitions):
-        if(len(cls.brokers) < numPartitions):
-            #create partitions on demand
-            print("Creating broker ")
-            for i in range(numPartitions - len(cls.brokers)):
-                broker_obj = Docker.build_run("../../broker")
-                cls.lock.acquire()
-                cls.brokers[broker_obj.brokerID] = broker_obj
-                cls.lock.release()
-        print('###################')
+    def assignBrokers(cls, topicName, numPartitions):
+        PartitionBroker = {}
         brokerIDs = list(cls.brokers.keys())
         l = len(brokerIDs)
         brokerList = []
         for i in range(numPartitions):
             brokerList.append(brokerIDs[int(random() * l)])
-        print('###################')
+
+        actualPartitions = 0
+
         for i in range(numPartitions):
             # TODO assign the broker url
             brokerID = brokerList[i]
-            brokerTopicName = str(i + 1) + '#' + topicName
-            PartitionBroker[brokerTopicName] = brokerID
-            ####################### DB UPDATES ###########################
-            db.session.add(TopicBroker(
-                topic = topicName,
-                brokerID = brokerID,
-                partition = i+1))
-            file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName,brokerID,i+1))    
-        db.session.commit()
-            
-        print('###################')
-        
-        # POST request to each broker to create new topic
-        for i in range(numPartitions):
-            brokerTopicName = str(i + 1) + '#' + topicName
-            print(brokerTopicName)
-            cur_url= cls.brokers[PartitionBroker[brokerTopicName]].url.split(':')[1].split('/')[-1]
-            while(True):
-                time.sleep(1)
-                res = os.system("ping -c 1 "+cur_url)
-                if(res == 0):
-                    break
-            print(cls.brokers[PartitionBroker[brokerTopicName]].url)
-            res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
+            brokerTopicName = str(actualPartitions + 1) + '#' + topicName
+
+            res = requests.post(cls.brokers[brokerID].url + "/topics", 
             json={
                 "name": brokerTopicName
             })
-            print(res.json())
+
+            # Post request to the broker to create the topic
+
             # Broker failure (TODO: what to do?)
             if res.status_code != 200:
                 print("Hello")
                 Docker.restartBroker(cls.brokers[PartitionBroker[brokerTopicName]].brokerID)
-                brokerTopicName = str(i + 1) + '#' + topicName
+                brokerTopicName = str(actualPartitions + 1) + '#' + topicName
                 res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
                 json={
                     "name": brokerTopicName
                 })
-            elif(res.json().get("status") != "Success"):
-                pass
+            elif(res.json().get("status") == "Success"):
+                PartitionBroker[brokerTopicName] = brokerID
+                ####################### DB UPDATES ###########################
+                db.session.add(TopicBroker(
+                    topic = topicName,
+                    brokerID = brokerID,
+                    partition = actualPartitions + 1))
+                file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, brokerID, actualPartitions + 1))    
+                actualPartitions += 1
+        db.session.commit()
+            
+        return actualPartitions, PartitionBroker
+
+        # POST request to each broker to create new topic
+        # for i in range(numPartitions):
+        #     brokerTopicName = str(i + 1) + '#' + topicName
+        #     print(brokerTopicName)
+        #     cur_url= cls.brokers[PartitionBroker[brokerTopicName]].url.split(':')[1].split('/')[-1]
+        #     while(True):
+        #         time.sleep(1)
+        #         res = os.system("ping -c 1 "+cur_url)
+        #         if(res == 0):
+        #             break
+        #     print(cls.brokers[PartitionBroker[brokerTopicName]].url)
+        #     res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
+        #     json={
+        #         "name": brokerTopicName
+        #     })
+        #     print(res.json())
+        #     # Broker failure (TODO: what to do?)
+        #     if res.status_code != 200:
+        #         print("Hello")
+        #         Docker.restartBroker(cls.brokers[PartitionBroker[brokerTopicName]].brokerID)
+        #         brokerTopicName = str(i + 1) + '#' + topicName
+        #         res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
+        #         json={
+        #             "name": brokerTopicName
+        #         })
+        #     elif(res.json().get("status") != "Success"):
+        #         pass
 
     @classmethod
     def getBrokerUrl(cls, topicName, partition):
@@ -372,6 +384,8 @@ class Manager:
             arr.extend(brokerMap[brokerID])
             IDs.append(arr)
 
+        if len(brokerMap) == 0:
+            raise Exception("Service currently unavailable")    
         if isProducer:
             return cls.producerMetaData.addSubscription(IDs, topicName)
         else:
@@ -384,16 +398,7 @@ class Manager:
         #return cls.brokers[brokerID].url
 
     @classmethod
-    def enqueue(cls, topicName, prodID, msg):
-        pass
-
-
-    @classmethod
-    def dequeue(cls, topicName, conID):
-        pass
-
-    @classmethod
-    def getSize(cls, topicName, conID):
+    def crashRecovery(cls):
         pass
 
 
@@ -405,6 +410,7 @@ class BrokerMetaData:
         self.last_beat = time.monotonic()
         self.brokerID = brokerID
         self.docker_id = docker_id
+        self.lock = threading.Lock()
 
 class Docker:
     
@@ -412,13 +418,14 @@ class Docker:
     # Maps Docker Name to Broker Object --> Not needed
     #self.id ={}
     lock = threading.Lock()
+
     @classmethod
-    def build_run(cls,path:str):
+    def build_run(cls, path:str):
         cls.lock.acquire()
         curr_id = cls.cnt
-        cls.cnt+=1
+        cls.cnt += 1
         cls.lock.release()
-        broker_nme = "broker"+str(curr_id)
+        broker_nme = "broker" + str(curr_id)
         '''
         if(database_exists('postgresql://{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_port,broker_nme))):
             conn = psycopg2.connect(
@@ -492,13 +499,16 @@ class Docker:
         db.session.commit()
         #####################################################
         return broker_obj
+
     @classmethod
-    def restartBroker(cls,brokerId):
+    def restartBroker(cls, brokerId):
+        # TODO Ping the broker before creating one
+
         cls.lock.acquire()
         curr_id = cnt
-        cnt+=1
+        cnt += 1
         cls.lock.release()
-        new_broker_nme = "broker"+str(curr_id)
+        new_broker_nme = "broker" + str(curr_id)
         oldBrokerObj = Manager.brokers[brokerId]
 
         ############## Connect to Database #######################
@@ -527,22 +537,26 @@ class Docker:
         docker_id = 0
 
         obj = os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} {}".format(new_broker_nme,db_uri,docker_img_broker))
-        url = json.loads(str(obj))["NetworkSettings"]["IPAddress"]+":5124/"
-        cls.lock.acquire()
+        url = json.loads(str(obj))["NetworkSettings"]["IPAddress"] + ":5124/"
+
+        Manager.brokers[brokerId].lock.acquire()
         #self.id[new_broker_nme] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
         #self.lock.release()
         #TopicMetaData.lock.aquire()
         #TopicMetaData.addBrokerUrl(url)
         #TopicMetaData.lock.release()
-        Manager[brokerId].docker_name = new_broker_nme
-        Manager[brokerId].url = url
-        Manager[brokerId].docker_id = docker_id
+        Manager.brokers[brokerId].docker_name = new_broker_nme
+        Manager.brokers[brokerId].url = url
+        Manager.brokers[brokerId].docker_id = docker_id
+        Manager.brokers[brokerId].lock.release()
+
         ################# DB UPDATES ########################
         BrokerMetaDataDB.query.filter_by(broker_id = brokerId).update(dict(docker_name = new_broker_nme,url = url,docker_id = docker_id))
         file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(brokerId,new_broker_nme,url,docker_id))
         db.session.commit()
         #####################################################
         return Manager[brokerId]
+
     def removeBroker(cls,brokerUrl):
         pass#TODO
 

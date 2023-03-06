@@ -9,8 +9,10 @@ import psycopg2
 import random
 from sqlalchemy_utils.functions import database_exists
 from api.utils import *
+
 dotenv_file = dotenv.find_dotenv()
 dotenv.load_dotenv(dotenv_file)
+
 if 'IS_WRITE' not in os.environ.keys():
     os.environ['IS_WRITE'] = '1'
 
@@ -36,6 +38,7 @@ print(docker_img_broker,db_username,db_host)
 
 Load_from_db = os.environ["LOAD_FROM_DB"]=='True'
 print(Load_from_db)
+
 def create_app(test_config = None):
     # create and configure the app
     app = Flask(__name__, instance_relative_config = True)
@@ -92,8 +95,9 @@ from api.models import ManagerDB,TopicDB,TopicBroker,BrokerMetaDataDB,globalProd
 IsWriteManager = (int(os.environ["IS_WRITE"])==1)
 random.seed(int(os.environ['RANDOM_SEED']))
 globLock = threading.Lock()
-cntManager = len(ManagerDB.query.all())
+# cntManager = len(ManagerDB.query.all())
 readManagerURL = []
+
 ###########################################################################
 def create_read_manager():
     
@@ -116,6 +120,8 @@ def create_read_manager():
     readManagerURL.append(url)
     globLock.release()
     return url
+
+    
 def load_from_db():
 
     ############################ Write Pending commits to DB ######################################
@@ -229,16 +235,16 @@ else:
 
 if os.environ['EXECUTE'] == '0':
     os.environ['EXECUTE'] = '1'
-    if IsWriteManager:
-        for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
-            create_read_manager()
+    # if IsWriteManager:
+    #     for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
+    #         create_read_manager()
 
-    for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
+    # for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
 
-        broker_obj = Docker.build_run("../../broker")
-        Manager.lock.acquire()
-        Manager.brokers[broker_obj.brokerID] = broker_obj
-        Manager.lock.release()
+    #     broker_obj = Docker.build_run("../../broker")
+    #     Manager.lock.acquire()
+    #     Manager.brokers[broker_obj.brokerID] = broker_obj
+    #     Manager.lock.release()
 
    
 from api import routes
