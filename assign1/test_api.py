@@ -2,7 +2,7 @@ from lib.lib import *
 import os
 import threading
 import random,time
-def run_test(url="http://127.0.0.1:5123"):
+def run_test(url="http://127.0.0.1:5124"):
     Q = MyQueue(url)
     path = "./test_asgn1"
     fp = open(path+"/prod_cons.txt")
