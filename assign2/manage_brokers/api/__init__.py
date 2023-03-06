@@ -6,7 +6,7 @@ import json
 import dotenv
 from dotenv import load_dotenv
 import psycopg2
-import random
+from random import random
 from sqlalchemy_utils.functions import database_exists
 from api.utils import *
 from flask_executor import Executor
@@ -20,7 +20,18 @@ if 'IS_WRITE' not in os.environ.keys():
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 DOCKER_DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/'
 WAL_path = "./temp.txt"
+###############################GLOBALS#####################################
 
+#brokersDocker = Docker()
+IsWriteManager = (int(os.environ["IS_WRITE"])==1)
+#random.seed(int(os.environ['RANDOM_SEED']))
+globLock = threading.Lock()
+#global cntManager 
+cntManager = 0 
+# cntManager = len(ManagerDB.query.all())
+readManagerURL = []
+
+###########################################################################
 
 
 db_username = os.environ['DB_USERNAME']
@@ -42,45 +53,20 @@ print(Load_from_db)
 
 def create_app(test_config = None):
     # create and configure the app
+    global DOCKER_DB_URI
     app = Flask(__name__, instance_relative_config = True)
     global DB_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = '5791628bb0b13ce0c676dfde280ba245'
     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
-
-    
     
     if ('DOCKER_DB_URI' in os.environ.keys()):        
         DOCKER_DB_URI = os.environ['DOCKER_DB_URI']
-    #print(str(os.system("docker inspect '{}'".format(postgres_container))))
-    #print(postgres_container)
-    obj = json.loads(os.popen("docker inspect '{}'".format(postgres_container)).read())
-    #print(obj[0].keys())
-    #global db_host
-    #print(obj[0]['NetworkSettings']['IPAddress'])
-    #db_host = obj[0]['NetworkSettings']['IPAddress']
-    #global db_port
-    #db_port = 5432
+    
+    #obj = json.loads(os.popen("docker inspect '{}'".format(postgres_container)).read())
+   
     DOCKER_DB_URI = 'postgresql+psycopg2://'+db_username+':'+db_password+'@'+db_host+':'+str(db_port)+'/'
-    '''
-    if(Load_from_db == False):
-        ############## Create Database #######################
-        conn = psycopg2.connect(
-            user=db_username, password=db_password, host=db_host, port= db_port
-        )
-        conn.autocommit = True
-
-        cursor = conn.cursor()
-        sql = '''
-        #CREATE database {}
-    '''     .format('anurat')
-        cursor.execute(sql)
-        
-        conn.close()
-        DB_URI = DOCKER_DB_URI + 'anurat'
-        ####################################################
-    '''
-    #db = None
+    
     DB_URI = DOCKER_DB_URI + os.environ['DB_NAME']
     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
     db = SQLAlchemy(app)
@@ -90,29 +76,21 @@ app, db = create_app()
 executor = Executor(app)
 from api.data_struct  import TopicMetaData,ProducerMetaData,ConsumerMetaData,BrokerMetaData,Docker,Manager
 from api.models import ManagerDB,TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,DockerDB,localProducerDB,localConsumerDB
-###############################GLOBALS#####################################
 
-#brokersDocker = Docker()
-IsWriteManager = (int(os.environ["IS_WRITE"])==1)
-random.seed(int(os.environ['RANDOM_SEED']))
-globLock = threading.Lock()
-# cntManager = len(ManagerDB.query.all())
-readManagerURL = []
-
-###########################################################################
+cntManager = 0
 def create_read_manager():
-    
+    global cntManager
     manager_nme = "manager"+str(cntManager)
     #db_uri = create_postgres_db(manager_nme,manager_nme+"_db",db_username,db_password)    
-    db_uri = DOCKER_DB_URI
-    url = create_container(manager_nme,db_uri,docker_img_broker,envs={
+    db_uri = DB_URI #sharing database 
+    url = create_container(db_uri,manager_nme,os.environ['DOCKER_IMG_MANAGER'],envs={
         'IS_WRITE':'0'
     })      
     print(url)
     
     ################# DB UPDATES ########################
     
-    db.session.add(ManagerDB(manager_nme,url))
+    db.session.add(ManagerDB(id=manager_nme,url=url))
     db.session.commit()
     #####################################################
 
@@ -217,9 +195,10 @@ def load_from_db():
     nw = Docker.cnt
         #brokersDocker.brokers[broker.docker_name] = curr
     ###########################################################################################
-    cntManager = len(ManagerDB.query.all())
-    for obj in ManagerDB.query.all():
-        readManagerURL.append(obj.url)
+    if IsWriteManager:
+        cntManager = len(ManagerDB.query.all())
+        for obj in ManagerDB.query.all():
+            readManagerURL.append(obj.url)
 
 
 
@@ -236,16 +215,16 @@ else:
 
 if os.environ['EXECUTE'] == '0':
     os.environ['EXECUTE'] = '1'
-    # if IsWriteManager:
-    #     for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
-    #         create_read_manager()
+    if IsWriteManager:
+        for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
+            create_read_manager()
 
-    # for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
+        for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
 
-    #     broker_obj = Docker.build_run("../../broker")
-    #     Manager.lock.acquire()
-    #     Manager.brokers[broker_obj.brokerID] = broker_obj
-    #     Manager.lock.release()
+            broker_obj = Docker.build_run("../../broker")
+            Manager.lock.acquire()
+            Manager.brokers[broker_obj.brokerID] = broker_obj
+            Manager.lock.release()
 
 
 

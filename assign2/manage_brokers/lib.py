@@ -251,6 +251,7 @@ class MyQueue:
                     self.outer.url+"/consumer/consume",
                     params=params
                 )
+                print(res.text)
                 if(res.json().get("status")=="Success"):
                     return res.json().get("message")
                 else:

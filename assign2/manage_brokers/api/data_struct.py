@@ -42,7 +42,7 @@ class TopicMetaData:
         # TODO get the current number of brokers numBrokers
         numBrokers = len(Manager.brokers)
         numPartitions = int(random() * numBrokers)
-        if not numPartitions: numPartitions = 1
+        if  numPartitions ==0: numPartitions = 1
 
         self.lock.acquire()
         if topicName in self.Topics:
@@ -236,14 +236,15 @@ class ConsumerMetaData:
         return True
 
     def getRRIndex(self, clientID, topicName):#For now no need to update db here
-        if topicName not in Manager.topicMetaData.Topics:
+        if topicName not in [obj.topicName for obj in TopicDB.query.all()]:
             raise Exception(f"Topic {topicName} doesn't exist")
         K = clientID + "#" + topicName
         #self.rrIndexLock[K].acquire()
-        cons_rrindex = self.rrIndex[K]
+        cons_rrindex = globalConsumerDB.query.filter_by(glob_id=clientID,topic=topicName).first().rrindex
         #self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K])
         #self.rrIndexLock[K].release()
-        topic_rrindex = Manager.topicMetaData.Topics[topicName][2]
+        #topic_rrindex = Manager.topicMetaData.Topics[topicName][2]
+        topic_rrindex = TopicDB.query.filter_by(topicName=topicName).first().rrindex
         globCons = globalConsumerDB.query.filter_by(glob_id=clientID,topic=topicName).first()
         #current_index = globProd.rrindex
         #To ensure load balancing
@@ -460,8 +461,9 @@ class Docker:
         ##############################################################
         docker_id = 0
         print("broker"+str(curr_id),db_uri,docker_img_broker)
-        os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
-        print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
+        os.system("docker rm -f broker"+str(curr_id))
+        os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
+        print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
         url = 'http://' + obj.decode('utf-8').strip() + ':5124'
         print(url)
@@ -527,7 +529,7 @@ class Docker:
         ##############################################################
         docker_id = 0
 
-        obj = os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} {}".format(new_broker_nme,db_uri,docker_img_broker))
+        obj = os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format(new_broker_nme,db_uri,docker_img_broker))
         url = json.loads(str(obj))["NetworkSettings"]["IPAddress"] + ":5124/"
 
         Manager.brokers[brokerId].lock.acquire()

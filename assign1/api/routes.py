@@ -2,7 +2,7 @@
 from flask import request
 from api import app
 from api.data_struct import Queue
-
+from flask import redirect
 '''
     a. CreateTopic
 
@@ -168,7 +168,10 @@ def register_producer():
     onFailure:
     - "message": <string> // Error message
 '''
-
+@app.route("/testA", methods=['GET'])
+def testA():
+    print(request.args.get('a'))
+    return redirect("http://10.102.68.15:5124/testA",307)
 @ app.route("/producer/produce", methods=['POST'])
 def enqueue():
     

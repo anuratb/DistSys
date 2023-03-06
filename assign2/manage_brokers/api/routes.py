@@ -3,7 +3,9 @@ from flask import request, redirect
 from api import app
 from api.data_struct import  Manager,Docker
 from api.models import TopicDB
-from api import db,random,executor
+
+from api import db,random,DB_URI,executor
+
 import requests
 from api import IsWriteManager, readManagerURL
 from flask_executor import Executor
@@ -34,6 +36,7 @@ from flask_executor import Executor
 '''
 @ app.route("/topics", methods=['POST'])
 def create_topic():
+    
     print('Create Topic')
     topic_name : str = request.get_json().get('name')
     try:
@@ -68,6 +71,10 @@ def create_topic():
 
 @ app.route("/topics", methods=['GET'])
 def list_topics():
+    return {
+        "status" : "Success" ,
+        "message" : "DB URI: {}".format(DB_URI)
+    }
     try : 
         topic_list = Manager.topicMetaData.getTopicsList()
         #topic_list = [itr[0] for itr in topic_list] # Get only topic names
@@ -225,7 +232,16 @@ def enqueue():
         else:
             partition = request.get_json().get('partition')
             brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-            return redirect(brokerUrl + "/producer/produce", 307)
+            #return redirect(brokerUrl + "/producer/produce", 307)
+            return requests.post(
+                brokerUrl + "/producer/produce",
+                json = {
+                    "topic": topic,
+                    "producer_id": producer_id,
+                    "message":message,
+                    "partition":partition
+                }
+            )
      
     except Exception as e:
         return {
@@ -252,14 +268,28 @@ def enqueue():
     - "message": <string> // Error message
 '''
 
+
+@app.route("/testA", methods=['GET'])
+def testA():
+    a = request.args.get('a')
+    return {
+        "status": "Success",
+        "message": "Test A"+str(a),
+        
+    }
+@app.route("/testB", methods=['GET'])
+def testB():
+    return redirect("/testA",307)
+
 @ app.route("/consumer/consume", methods=['GET'])
 def dequeue():
     try:
         
-        topic: str = request.args.get('topic')
-        consumer_id: str = request.args.get('consumer_id')
+        
 
         if(IsWriteManager):
+            topic: str = request.args.get('topic')
+            consumer_id: str = request.args.get('consumer_id')
             #Update topic rrindex
             Manager.topicMetaData.Topics[topic][2]+=1
             ###################### DB Update ############################
@@ -267,10 +297,18 @@ def dequeue():
             db.session.commit()
             #############################################################
             ind = int(random()*len(readManagerURL))
-            target_url = readManagerURL[ind]
-            return redirect(target_url+ "/consumer/consume", 307) #redirect to read manager
+            target_url = readManagerURL[ind]+"/consumer/consume"
+            url_with_param="{}?topic={}&consumer_id={}".format(target_url,topic,consumer_id)
+            #obj = redirect(target_url, 307) #redirect to read manager
+            obj = requests.get(url_with_param)#Redirect not working
+            #print(obj.text)
+            return obj.json()
         else:
+            
+            topic: str = request.args.get('topic')
+            consumer_id: str = request.args.get('consumer_id')
             if consumer_id[0] == '$':
+                
                 brokerID, conID,partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
                 brokerUrl = Manager.getBrokerUrlFromID(brokerID)
                 res = requests.get(
@@ -292,7 +330,13 @@ def dequeue():
             else:
                 partition = request.get_json().get('partition')
                 brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-                return redirect(brokerUrl + "/consumer/consumer", 307)
+                #obj =  redirect(brokerUrl + "/consumer/consumer", 307)
+                #print(obj.json())
+                return requests.get(brokerUrl + "/consumer/consume", params = {
+                        "topic": topic,
+                        "consumer_id": str(consumer_id),
+                        "partition":str(partition)
+                    })
 
     except Exception as e:
         return {
@@ -326,7 +370,13 @@ def size():
     try : 
         partition = request.get_json().get('partition')
         brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-        return redirect(brokerUrl + "/size", 307)
+        return requests.get(brokerUrl + "/size"
+            , params = {
+                "topic": topic,
+                "consumer_id": str(consumer_id),
+                "partition":str(partition)
+            })
+        #return redirect(brokerUrl + "/size", 307)
     
     except Exception as e: 
         return {
