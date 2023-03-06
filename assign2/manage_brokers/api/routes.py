@@ -399,10 +399,13 @@ def removeBroker():
 def crashRecovary():
     try:
         brokerID = int(request.args.get('brokerID'))
-        executor.submit(Docker.restartBroker, brokerID = brokerID)
+        
+        #executor.submit(Docker.restartBroker, brokerID = brokerID)
+        Docker.restartBroker(brokerID)
         return "success"
     except Exception as e:
         return str(e)
+
 
 
 @app.route('/job')

@@ -1,5 +1,5 @@
 import threading
-from . import db,executor
+from . import db,executor,app
 import json
 import os, requests, time
 from api import random
@@ -378,12 +378,14 @@ class Manager:
         # cls.X += 1
         # return
         for key,broker in cls.brokers.items():
-            if is_server_running(broker.url):
+            val = is_server_running(broker.url)
+            if val:
                 broker.lock.acquire()
                 broker.last_beat = time.monotonic()
                 broker.lock.release()
             else:
-                _ = requests.get("http://127.0.0.1:5123/crash_recovery", params = {'brokerID': str(broker.brokerID)})
+                Docker.restartBroker(key)
+                #_ = requests.get("http://127.0.0.1:5124/crash_recovery", params = {'brokerID': str(broker.brokerID)})
     
     # @classmethod
     # def crashRecovery(cls, brokerID):
@@ -498,12 +500,12 @@ class Docker:
     def restartBroker(cls, brokerId):
         # TODO Ping the broker before creating one
 
-        cls.lock.acquire()
-        curr_id = cnt
-        cnt += 1
-        cls.lock.release()
-        new_broker_nme = "broker" + str(curr_id)
-        oldBrokerObj = Manager.brokers[brokerId]
+        #cls.lock.acquire()
+        #curr_id = cnt
+        #cnt += 1
+        #cls.lock.release()
+        #new_broker_nme = "broker" + str(curr_id)
+        oldBrokerObj:BrokerMetaData = Manager.brokers[brokerId]
 
         ############## Connect to Database #######################
         #conn = psycopg2.connect(
@@ -529,27 +531,27 @@ class Docker:
         #db.session.commit()
         ##############################################################
         docker_id = 0
-
-        obj = os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format(new_broker_nme,db_uri,docker_img_broker))
-        url = json.loads(str(obj))["NetworkSettings"]["IPAddress"] + ":5124/"
-
+        os.system("docker rm -f {}".format(oldBrokerObj.docker_name))
+        os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format(oldBrokerObj.docker_name,db_uri,docker_img_broker))
+        #url = json.loads(str(obj))["NetworkSettings"]["IPAddress"] + ":5124/"
+        url = get_url(oldBrokerObj.docker_name)
+        url = 'http://' + url + ':5124'
         Manager.brokers[brokerId].lock.acquire()
         #self.id[new_broker_nme] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
         #self.lock.release()
         #TopicMetaData.lock.aquire()
         #TopicMetaData.addBrokerUrl(url)
         #TopicMetaData.lock.release()
-        Manager.brokers[brokerId].docker_name = new_broker_nme
         Manager.brokers[brokerId].url = url
         Manager.brokers[brokerId].docker_id = docker_id
         Manager.brokers[brokerId].lock.release()
-
-        ################# DB UPDATES ########################
-        BrokerMetaDataDB.query.filter_by(broker_id = brokerId).update(dict(docker_name = new_broker_nme,url = url,docker_id = docker_id))
-        file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(brokerId,new_broker_nme,url,docker_id))
-        db.session.commit()
-        #####################################################
-        return Manager[brokerId]
+        with app.app_context():
+            ################# DB UPDATES ########################
+            BrokerMetaDataDB.query.filter_by(broker_id = brokerId).update(dict(url = url,docker_id = docker_id))
+            file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(brokerId,oldBrokerObj.docker_name,url,docker_id))
+            db.session.commit()
+            #####################################################
+        return Manager.brokers[brokerId]
 
     def removeBroker(cls,brokerUrl):
         pass#TODO
@@ -566,7 +568,9 @@ class VM:
 
 
 # Comment below code to remove perodic heart beat checks
-
-#scheduler = BackgroundScheduler()
-#job = scheduler.add_job(Manager.checkBrokerHeartBeat, 'interval', minutes = float(os.environ['HEART_BEAT_INTERVAL']))
-#scheduler.start()
+from api import IsWriteManager
+if IsWriteManager:
+    
+    scheduler = BackgroundScheduler()
+    job = scheduler.add_job(Manager.checkBrokerHeartBeat, 'interval', minutes = float(os.environ['HEART_BEAT_INTERVAL']))
+    scheduler.start()
