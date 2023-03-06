@@ -71,10 +71,7 @@ def create_topic():
 
 @ app.route("/topics", methods=['GET'])
 def list_topics():
-    return {
-        "status" : "Success" ,
-        "message" : "DB URI: {}".format(DB_URI)
-    }
+    
     try : 
         topic_list = Manager.topicMetaData.getTopicsList()
         #topic_list = [itr[0] for itr in topic_list] # Get only topic names

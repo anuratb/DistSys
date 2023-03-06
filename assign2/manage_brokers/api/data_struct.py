@@ -9,7 +9,7 @@ from api import db_host,db_port,db_password,db_username,docker_img_broker
 import subprocess
 from api.utils import is_server_running
 import psycopg2
-from apscheduler.schedulers.background import BackgroundScheduler
+
 from api.utils import *
 
 
@@ -567,10 +567,3 @@ class VM:
 '''
 
 
-# Comment below code to remove perodic heart beat checks
-from api import IsWriteManager
-if IsWriteManager:
-    
-    scheduler = BackgroundScheduler()
-    job = scheduler.add_job(Manager.checkBrokerHeartBeat, 'interval', minutes = float(os.environ['HEART_BEAT_INTERVAL']))
-    scheduler.start()

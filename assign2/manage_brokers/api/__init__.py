@@ -10,7 +10,7 @@ from random import random
 from sqlalchemy_utils.functions import database_exists
 from api.utils import *
 from flask_executor import Executor
-
+from apscheduler.schedulers.background import BackgroundScheduler
 dotenv_file = dotenv.find_dotenv()
 dotenv.load_dotenv(dotenv_file)
 
@@ -215,7 +215,7 @@ else:
 
 if os.environ['EXECUTE'] == '0':
     os.environ['EXECUTE'] = '1'
-    if IsWriteManager:
+    if IsWriteManager and not Load_from_db:
         for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
             create_read_manager()
 
@@ -225,7 +225,13 @@ if os.environ['EXECUTE'] == '0':
             Manager.lock.acquire()
             Manager.brokers[broker_obj.brokerID] = broker_obj
             Manager.lock.release()
-
+# Comment below code to remove perodic heart beat checks
+from api import IsWriteManager
+if IsWriteManager:
+    
+    scheduler = BackgroundScheduler()
+    job = scheduler.add_job(Manager.checkBrokerHeartBeat, 'interval', minutes = float(os.environ['HEART_BEAT_INTERVAL']))
+    scheduler.start()
 
 
 from api import routes
