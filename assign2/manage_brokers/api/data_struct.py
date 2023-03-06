@@ -10,6 +10,7 @@ import subprocess
 from api.utils import is_server_running
 import psycopg2
 from apscheduler.schedulers.background import BackgroundScheduler
+from api.utils import *
 
 
 
@@ -376,7 +377,7 @@ class Manager:
         # requests.get("http://127.0.0.1:5123/crash_recovery", params = {'brokerID': str(cls.X)})
         # cls.X += 1
         # return
-        for broker in cls.brokers:
+        for key,broker in cls.brokers.items():
             if is_server_running(broker.url):
                 broker.lock.acquire()
                 broker.last_beat = time.monotonic()
@@ -566,6 +567,6 @@ class VM:
 
 # Comment below code to remove perodic heart beat checks
 
-scheduler = BackgroundScheduler()
-job = scheduler.add_job(Manager.checkBrokerHeartBeat, 'interval', minutes = float(os.environ['HEART_BEAT_INTERVAL']))
-scheduler.start()
+#scheduler = BackgroundScheduler()
+#job = scheduler.add_job(Manager.checkBrokerHeartBeat, 'interval', minutes = float(os.environ['HEART_BEAT_INTERVAL']))
+#scheduler.start()
