@@ -52,4 +52,4 @@ def create_container(db_uri:str,container_name:str,img,envs={},expose_port=5124)
     return url
 
 def is_server_running(url):
-    return os.system("ping -c 1 "+url)==0
+    return os.system("ping -c 1 " + url) == 0

@@ -40,13 +40,6 @@ class TopicMetaData:
         numPartitions = int(random() * numBrokers)
         if not numPartitions: numPartitions = 1
 
-        # Choose the brokers (TODO how?)
-        numPartitions, assignedBrokers = Manager.assignBrokers(topicName, numPartitions)
-
-        # Brokers are down
-        if numPartitions == 0:
-            raise Exception("Service currently unavailable. Please try again later.")
-
         self.lock.acquire()
         if topicName in self.Topics:
             self.lock.release()
@@ -54,6 +47,17 @@ class TopicMetaData:
         topicID = len(self.Topics) + 1
         self.Topics[topicName] = [topicID, numPartitions, 0]
         self.lock.release()
+
+        # Choose the brokers (TODO how?)
+        numPartitions, assignedBrokers = Manager.assignBrokers(topicName, numPartitions)
+
+        # All Brokers are down
+        if numPartitions == 0:
+            del self.Topics[topicName]
+            raise Exception("Service currently unavailable. Please try again later.")
+
+        # Now update with actual no of paritions created
+        self.Topics[topicName][1] = numPartitions
 
         for K in assignedBrokers.keys():
             self.PartitionBroker[K] = assignedBrokers[K]
