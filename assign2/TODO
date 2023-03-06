@@ -1,0 +1,1 @@
+1. All DB updates should be done at the end of addTopic (including Partition to broker mapping)

@@ -3,12 +3,14 @@ from flask import request, redirect
 from api import app
 from api.data_struct import  Manager,Docker
 from api.models import TopicDB
-from api import db,random,DB_URI
+
+from api import db,random,DB_URI,executor
+
 import requests
 from api import IsWriteManager, readManagerURL
 from flask_executor import Executor
 
-executor = Executor(app)
+
 
 
 '''
@@ -393,14 +395,17 @@ def removeBroker():
     return NotImplementedError()
 
 
+@app.route('/crash_recovery')
+def crashRecovary():
+    try:
+        brokerID = int(request.args.get('brokerID'))
+        executor.submit(Docker.restartBroker, brokerID = brokerID)
+        return "success"
+    except Exception as e:
+        return str(e)
+
+
 @app.route('/job')
-def index():
-    executor.submit(crashRecovery)
-    return 'Scheduled a job'
-
-
-
-def crashRecovery():
-    print(Manager.brokers)
-    while(1):
-        pass
+def job():
+    Manager.crashRecovery(0)
+    return str(100)

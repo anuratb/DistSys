@@ -1,5 +1,5 @@
 import threading
-from . import db
+from . import db,executor
 import json
 import os, requests, time
 from api import random
@@ -7,13 +7,17 @@ from api.models import TopicDB,TopicBroker,globalProducerDB,localProducerDB,glob
 from sqlalchemy_utils.functions import database_exists
 from api import db_host,db_port,db_password,db_username,docker_img_broker
 import subprocess
-from api.utils import *
+from api.utils import is_server_running
 import psycopg2
+from apscheduler.schedulers.background import BackgroundScheduler
+
+
 
 
 WAL_path = './temp.txt'
 
 file = open('WAL_path.txt','w')
+
 
 
 
@@ -265,6 +269,7 @@ class Manager:
     # TODO how to add broker Metadata?
     lock = threading.Lock()
     brokers = {}
+    X = 0
 
     @classmethod
     def assignBrokers(cls, topicName, numPartitions):
@@ -291,13 +296,8 @@ class Manager:
 
             # Broker failure (TODO: what to do?)
             if res.status_code != 200:
-                print("Hello")
-                Docker.restartBroker(cls.brokers[PartitionBroker[brokerTopicName]].brokerID)
-                brokerTopicName = str(actualPartitions + 1) + '#' + topicName
-                res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
-                json={
-                    "name": brokerTopicName
-                })
+                # Restart the broker
+                executor.submit(Docker.restartBroker, brokerID = brokerID)
             elif(res.json().get("status") == "Success"):
                 PartitionBroker[brokerTopicName] = brokerID
                 ####################### DB UPDATES ###########################
@@ -310,34 +310,6 @@ class Manager:
         db.session.commit()
             
         return actualPartitions, PartitionBroker
-
-        # POST request to each broker to create new topic
-        # for i in range(numPartitions):
-        #     brokerTopicName = str(i + 1) + '#' + topicName
-        #     print(brokerTopicName)
-        #     cur_url= cls.brokers[PartitionBroker[brokerTopicName]].url.split(':')[1].split('/')[-1]
-        #     while(True):
-        #         time.sleep(1)
-        #         res = os.system("ping -c 1 "+cur_url)
-        #         if(res == 0):
-        #             break
-        #     print(cls.brokers[PartitionBroker[brokerTopicName]].url)
-        #     res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
-        #     json={
-        #         "name": brokerTopicName
-        #     })
-        #     print(res.json())
-        #     # Broker failure (TODO: what to do?)
-        #     if res.status_code != 200:
-        #         print("Hello")
-        #         Docker.restartBroker(cls.brokers[PartitionBroker[brokerTopicName]].brokerID)
-        #         brokerTopicName = str(i + 1) + '#' + topicName
-        #         res = requests.post(cls.brokers[PartitionBroker[brokerTopicName]].url + "/topics", 
-        #         json={
-        #             "name": brokerTopicName
-        #         })
-        #     elif(res.json().get("status") != "Success"):
-        #         pass
 
     @classmethod
     def getBrokerUrl(cls, topicName, partition):
@@ -367,7 +339,8 @@ class Manager:
 
             # TODO Broker Failure
             if res.status_code != 200:
-                pass
+                # Restart the broker
+                executor.submit(Docker.restartBroker, brokerID = brokerID)
             elif(res.json().get("status") != "Success"):
                 raise Exception(res.json().get("message"))
             else:
@@ -386,7 +359,7 @@ class Manager:
             IDs.append(arr)
 
         if len(brokerMap) == 0:
-            raise Exception("Service currently unavailable")    
+            raise Exception("Service currently unavailable. Please try again later.")    
         if isProducer:
             return cls.producerMetaData.addSubscription(IDs, topicName)
         else:
@@ -399,9 +372,27 @@ class Manager:
         #return cls.brokers[brokerID].url
 
     @classmethod
-    def crashRecovery(cls):
-        pass
+    def checkBrokerHeartBeat(cls):
+        # requests.get("http://127.0.0.1:5123/crash_recovery", params = {'brokerID': str(cls.X)})
+        # cls.X += 1
+        # return
+        for broker in cls.brokers:
+            if is_server_running(broker.url):
+                broker.lock.acquire()
+                broker.last_beat = time.monotonic()
+                broker.lock.release()
+            else:
+                _ = requests.get("http://127.0.0.1:5123/crash_recovery", params = {'brokerID': str(broker.brokerID)})
+    
+    # @classmethod
+    # def crashRecovery(cls, brokerID):
+    #     print(brokerID)
+    #     executor.submit(cls.F)
 
+    # @classmethod
+    # def F(cls):
+    #     print("Hell")
+        
 
 class BrokerMetaData:
     def __init__(self, DB_URI = '', url = '', name = '',brokerID = 0,docker_id = 0):
@@ -573,4 +564,8 @@ class VM:
 '''
 
 
+# Comment below code to remove perodic heart beat checks
 
+scheduler = BackgroundScheduler()
+job = scheduler.add_job(Manager.checkBrokerHeartBeat, 'interval', minutes = float(os.environ['HEART_BEAT_INTERVAL']))
+scheduler.start()
