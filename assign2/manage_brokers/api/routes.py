@@ -5,7 +5,11 @@ from api.data_struct import  Manager,Docker
 from api.models import TopicDB
 from api import db,random
 import requests
-from api import IsWriteManager,readManagerURL
+from api import IsWriteManager, readManagerURL
+from flask_executor import Executor
+
+executor = Executor(app)
+
 
 '''
     a. CreateTopic
@@ -198,7 +202,7 @@ def enqueue():
             obj.rrindex = Manager.topicMetaData.Topics[topic][2]
             db.session.commit()
             #############################################################
-            brokerID, prodID,partition = Manager.producerMetaData.getRRIndex(producer_id, topic)
+            brokerID, prodID, partition = Manager.producerMetaData.getRRIndex(producer_id, topic)
             brokerUrl = Manager.getBrokerUrlFromID(brokerID)
 
             res = requests.post(
@@ -264,7 +268,7 @@ def dequeue():
             #############################################################
             ind = int(random()*len(readManagerURL))
             target_url = readManagerURL[ind]
-            return redirect(target_url+ "/consumer/consume", 307)#redirect to read manager
+            return redirect(target_url+ "/consumer/consume", 307) #redirect to read manager
         else:
             if consumer_id[0] == '$':
                 brokerID, conID,partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
@@ -340,3 +344,15 @@ def addBroker():
 def removeBroker():
     return NotImplementedError()
 
+
+@app.route('/job')
+def index():
+    executor.submit(crashRecovery)
+    return 'Scheduled a job'
+
+
+
+def crashRecovery():
+    print(Manager.brokers)
+    while(1):
+        pass
