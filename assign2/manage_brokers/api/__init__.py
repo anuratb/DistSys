@@ -207,9 +207,10 @@ if (IsWriteManager):
     if(Load_from_db):
         load_from_db()
     else:
-        db.session.remove()
+        #db.session.remove()
         db.drop_all()
         db.create_all()
+        db.session.commit()
         db.session.add(DockerDB(id=0))
         db.session.commit()
 
@@ -226,8 +227,10 @@ if os.environ['EXECUTE'] == '0':
             Manager.lock.acquire()
             Manager.brokers[broker_obj.brokerID] = broker_obj
             Manager.lock.release()
+
 # Comment below code to remove perodic heart beat checks
 from api import IsWriteManager
+
 if IsWriteManager:
     
     scheduler = BackgroundScheduler()
