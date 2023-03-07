@@ -19,7 +19,7 @@ if 'IS_WRITE' not in os.environ.keys():
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 DOCKER_DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/'
-WAL_path = "./temp.txt"
+LOG_path = "./LOG.txt"
 ###############################GLOBALS#####################################
 
 #brokersDocker = Docker()
@@ -203,14 +203,15 @@ def load_from_db():
 
 
 app.app_context().push()
-
-if(Load_from_db):
-    load_from_db()
-else:
-    db.drop_all()
-    db.create_all()
-    db.session.add(DockerDB(id=0))
-    db.session.commit()
+if (IsWriteManager):
+    if(Load_from_db):
+        load_from_db()
+    else:
+        db.session.remove()
+        db.drop_all()
+        db.create_all()
+        db.session.add(DockerDB(id=0))
+        db.session.commit()
 
 
 if os.environ['EXECUTE'] == '0':
