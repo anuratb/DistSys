@@ -11,7 +11,7 @@
             "request": "launch",
             "module": "flask",
             "env": {
-                "FLASK_APP": "/home/anurat/DistSys/assign2/manage_brokers/run.py",
+                "FLASK_APP": "/home/anindya/sem8/DS/DistSys/assign2/manage_brokers/run.py",
                 "FLASK_DEBUG": "1"
             },
             "args": [

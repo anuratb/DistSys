@@ -74,7 +74,6 @@ def list_topics():
     
     try : 
         topic_list = Manager.topicMetaData.getTopicsList()
-        #topic_list = [itr[0] for itr in topic_list] # Get only topic names
         topic_string : str = ", ".join(topic_list)
         
         return {
@@ -281,9 +280,6 @@ def testB():
 @ app.route("/consumer/consume", methods=['GET'])
 def dequeue():
     try:
-        
-        
-
         if(IsWriteManager):
             topic: str = request.args.get('topic')
             consumer_id: str = request.args.get('consumer_id')
@@ -359,6 +355,22 @@ def dequeue():
     - "message": <string> // Error message
 '''
 
+@ app.route("/get_partition_count", methods=['GET'])
+def getPartitionCount():
+    try:
+        topic: str = request.args.get('topic')
+        if topic not in Manager.topicMetaData.Topics:
+            raise Exception(f"Topic {topic} doesn't exist")
+        return {
+            "status": "Success",
+            "count": str(Manager.topicMetaData.Topics[topic][1])
+        }
+    except Exception as e:
+        return {
+            "status": "Failure",
+            "message": str(e)
+        }
+
 @ app.route("/size", methods=['GET'])
 def size():
     topic : str = request.args.get('topic' , type=str) 
@@ -407,5 +419,6 @@ def crashRecovary():
 
 @app.route('/job')
 def job():
-    Manager.crashRecovery(0)
-    return str(100)
+    print("A")
+    while True: pass
+    # return str(100)
