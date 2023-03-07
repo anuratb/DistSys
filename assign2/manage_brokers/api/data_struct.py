@@ -15,9 +15,9 @@ from api.utils import *
 
 
 
-WAL_path = './temp.txt'
+LOG_path = './LOG.txt'
 
-file = open('WAL_path.txt','w')
+file = open('LOG_path.txt','w')
 
 
 
@@ -42,9 +42,10 @@ class TopicMetaData:
     def addTopic(self, topicName):
         # TODO get the current number of brokers numBrokers
         numBrokers = len(Manager.brokers)
-        numPartitions = int(random() * numBrokers)
+        val = random() * numBrokers
+        numPartitions = int(val)
         if  numPartitions ==0: numPartitions = 1
-
+        file.write("INFO Choosing {} partitions for topic {}".format(numPartitions, topicName))
         self.lock.acquire()
         if topicName in self.Topics:
             self.lock.release()
@@ -214,10 +215,11 @@ class ConsumerMetaData:
         ################## DB Updates #####################
         glob_prod = globalConsumerDB(glob_id=clientID,topic = topicName,rrindex=0,brokerCnt = len(clientIDs))
         file.write("db.session.add(globalConsumerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
+        local_prods = []
         for row in clientIDs:
             broker_id = row[0] 
             prod_ids = row[1:]
-            local_prods = []
+            
             for prod_id,partition in prod_ids:
                 local_prods.append(localConsumerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID,partition=partition))
                 file.write("db.session.add(localConsumerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))

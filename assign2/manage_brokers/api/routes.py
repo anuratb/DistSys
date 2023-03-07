@@ -113,7 +113,8 @@ def register_consumer():
     try:
         if partition:
             brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-            return redirect(brokerUrl + "/consumer/register", 307)
+            #return redirect(brokerUrl + "/consumer/register", 307)
+            return requests.post(brokerUrl + "/consumer/register", json=request.get_json()).json()
         else:
             # Subscribe to all partitions of a topic
             retID = Manager.registerClientForAllPartitions("/consumer/register", topic, False)
@@ -155,7 +156,8 @@ def register_producer():
     try:
         if partition:
             brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-            return redirect(brokerUrl + "/producer/register", 307)
+            #return redirect(brokerUrl + "/producer/register", 307)
+            return requests.post(brokerUrl + "/producer/register", json=request.get_json()).json()
         else:
             # Subscribe to all partitions of a topic
             retID = Manager.registerClientForAllPartitions("/producer/register", topic, True)
@@ -237,7 +239,7 @@ def enqueue():
                     "message":message,
                     "partition":partition
                 }
-            )
+            ).json()
      
     except Exception as e:
         return {
@@ -280,6 +282,7 @@ def testB():
 @ app.route("/consumer/consume", methods=['GET'])
 def dequeue():
     try:
+
         if(IsWriteManager):
             topic: str = request.args.get('topic')
             consumer_id: str = request.args.get('consumer_id')
@@ -300,6 +303,7 @@ def dequeue():
             
             topic: str = request.args.get('topic')
             consumer_id: str = request.args.get('consumer_id')
+            
             if consumer_id[0] == '$':
                 
                 brokerID, conID,partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
@@ -329,7 +333,7 @@ def dequeue():
                         "topic": topic,
                         "consumer_id": str(consumer_id),
                         "partition":str(partition)
-                    })
+                    }).json()
 
     except Exception as e:
         return {
