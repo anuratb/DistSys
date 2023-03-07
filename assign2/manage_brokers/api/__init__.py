@@ -204,18 +204,19 @@ def load_from_db():
 
 app.app_context().push()
 
-if(Load_from_db):
-    load_from_db()
-else:
-    db.drop_all()
-    db.create_all()
-    db.session.add(DockerDB(id=0))
-    db.session.commit()
+
 
 
 if os.environ['EXECUTE'] == '0':
     os.environ['EXECUTE'] = '1'
     if IsWriteManager:
+        if(Load_from_db):
+            load_from_db()
+        else:
+            db.drop_all()
+            db.create_all()
+            db.session.add(DockerDB(id=0))
+            db.session.commit()
         for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
             create_read_manager()
 
