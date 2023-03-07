@@ -1,4 +1,4 @@
-import requests
+import requests,random,time
 
 class MyQueue:
     
@@ -10,13 +10,15 @@ class MyQueue:
     @return Topic object
     '''
 
-    def createTopic(self,topicName:str):
+    def createTopic(self, topicName:str):
         try:
-            #print(str("^^^^^^")+topicName)
-            res = requests.post(self.url+"/topics",json={
-                "name":topicName
+            print(str("^^^^^^") + topicName)
+            res = requests.post(self.url + "/topics",json={
+                "name": topicName
             })
+            print(res.json())
             if(res.json().get("status")=="Success"):
+                print("Sucess")
                 return self.Topic(self,topicName)
             else:
                 #print(str(res.json()))
@@ -25,12 +27,27 @@ class MyQueue:
         except Exception as err:
             return str(err)
 
+    def get_partition_count(self, topicName):
+        try:
+            res = requests.get(
+                self.url + "/get_partition_count",
+                params = {
+                    'topic': topicName
+                }
+            )
+            if(res.json().get("status")=="Success"):
+                return res.json().get("count")
+            else:
+                raise Exception(res.json().get("message"))
+        except Exception as err:
+            return str(err)
+
     '''
     Method To get all Topics
     '''
     def get_all_topics(self):
         try:
-            res = requests.get(self.url+"/topics")
+            res = requests.get(self.url + "/topics")
             if(res.json().get("status")=="Success"):
                 return res.json().get("topics")
             else:
@@ -43,51 +60,47 @@ class MyQueue:
     @param topicNames
     @return Producer Object
     '''
-    def createProducer(self,topicNames:list):
+    def createClient(self, topicMap, isProducer):
         try:
             ids = {}
-            for topicName in topicNames:
-                # Check if producer is already registered in topicName
-                if topicName in ids: continue
+            for topicName, partition in topicMap.items():
+                regTopicName = topicName
+                if partition:
+                    regTopicName += '#' + str(partition)
+
+                if regTopicName in ids: continue
+                json = {
+                    "topic": topicName,
+                }
+                if partition:
+                    json["partition"] = partition
+
+                url = self.url
+                if isProducer:
+                    url += "/producer/register"
+                else:
+                    url += "/consumer/register"
                 res = requests.post(
-                    self.url+"/producer/register",
-                    json={
-                        "topic":topicName
-                    })
-                if(res.json().get("status")!="Success"):
+                    url,
+                    json=json
+                )
+                if(res.json().get("status") != "Success"):
                     raise Exception(res.json().get("message"))
                 else:
-                    pid = res.json().get("producer_id")
-                    ids[topicName] = pid
-            return self.Producer(self,ids)                
+                    pid = None
+                    if isProducer:
+                        pid = res.json().get("producer_id")
+                    else:
+                        pid = res.json().get("consumer_id")
+                    ids[regTopicName] = pid
+            if isProducer:
+                return self.Producer(self, ids)
+            else:
+                return self.Consumer(self, ids)            
 
         except Exception as err:
             return str(err)
-    '''
-    Builder function to create consumer
-    @param topicNames
-    @return Consumer Object
-    '''
-    def createConsumer(self,topicNames:list):
-        try:
-            ids = {}
-            for topicName in topicNames:
-                # Check if consumer is already registered in topicName
-                if topicName in ids: continue
-                res = requests.post(
-                    self.url+"/consumer/register",
-                    json={
-                        "topic":topicName
-                    })
-                if(res.json().get("status")!="Success"):
-                    raise Exception(res.json().get("message"))
-                else:
-                    cid = res.json().get("consumer_id")
-                    ids[topicName] = cid
-            return self.Consumer(self,ids)                
 
-        except Exception as err:
-            raise str(err)
     '''
     Topic class
     '''
@@ -95,17 +108,16 @@ class MyQueue:
         def __init__(self,outer,topicName:str):
             self.topicName = topicName
             self.outer = outer
-        def __str__(self) -> str:
-            print(self.topicName)
     '''
     Producer Class
     '''
     class Producer:
 
-        def __init__(self,outer, pids:dict):
+        def __init__(self,outer, pids:dict, partition = None):
             #self.topicName = topicName
             self.pids = pids
             self.outer = outer
+            self.partition = partition
         '''
         To add a new topic(already existing in db) to topicList of producer
         @param topicName
@@ -115,11 +127,14 @@ class MyQueue:
             try:
                 # Check if producer is already registered in topicName
                 if topicName in self.pids: return
+                json={
+                        "topic": topicName
+                }
+                if(self.partition) :
+                    json["partition"] = self.partition
                 res = requests.post(
                     self.url+"/producer/register",
-                    json={
-                        "topic": topicName
-                    }
+                    json=json
                 )
                 if(res.json().get("status") != "Success"):
                     raise Exception(res.json().get("message"))
@@ -134,20 +149,28 @@ class MyQueue:
         @param topicName: topic Name
         returns 0 if success
         '''
-        def enqueue(self,msg:str,topicName:str):
-            if(topicName not in self.pids.keys()):
-                raise Exception("Error: Topic {} not registered".format(topicName))
+        def enqueue(self, msg:str, topicName:str, partition = None):
+            regTopicName = topicName
+            if partition:
+                regTopicName += '#' + str(partition)
             try:
-                id = self.pids[topicName]
+                if regTopicName not in self.pids.keys():
+                    raise Exception("Error: Topic {} not registered".format(topicName))
+                id = self.pids[regTopicName]
+                json = {
+                    "topic": topicName,
+                    "producer_id": str(id),
+                    "message": msg,
+                }
+
+                if partition:
+                    json["partition"] = str(partition)
                 res = requests.post(
-                    self.outer.url+"/producer/produce",
-                    json={
-                        "topic":topicName,
-                        "producer_id":id,
-                        "message":msg
-                    }
+                    self.outer.url + "/producer/produce",
+                    json = json
                 )
-                if(res.json().get("status")=="Success"):
+
+                if(res.json().get("status") == "Success"):
                     return 0
                 else:
                     raise Exception(res.json.get("message"))
@@ -158,27 +181,47 @@ class MyQueue:
     '''
     class Consumer:
 
-        def __init__(self,outer,cids:dict):
+        def __init__(self,outer,cids:dict,partition = None):
             #self.topicName = topicName
             self.cids = cids
             self.outer = outer
+            self.partition = partition
+
+        def consume(self):
+            while(True):
+                try:
+                    for topic in self.cids.keys():
+                        delay = random.random()
+                        time.sleep(delay)
+                        
+                        if(self.getSize(topic)>0):
+                            msg = self.dequeue(topic)
+                            #TODO
+                            print("Dequeued: {} by consumer {}".format(msg,self.cids[self.cids.keys()[0]]))
+                    
+                except:
+                    continue
 
         # Used to register for a topic
         def registerTopic(self, topicName: str):
             try:
                 # Check if producer is already registered in topicName
                 if topicName in self.cids: return
+                json={
+                    "topic": topicName
+                }
+                if(self.partition) :
+                    json["partition"] = self.partition
                 res = requests.post(
-                    self.outer.url+"/consumer/register",
-                    json={
-                        "topic": topicName
-                    }
+                    self.url+"/consumer/register",
+                    json=json
                 )
                 if(res.json().get("status") != "Success"):
                     raise Exception(res.json().get("message"))
                 else:
                     cid = res.json().get("consumer_id")
                     self.cids[topicName] = cid
+                    
             except Exception as err:
                 return str(err)
         '''
@@ -186,33 +229,40 @@ class MyQueue:
         @param topicName
         @return The message dequeued
         '''
-        def dequeue(self,topicName:str):
-            if(topicName not in self.cids.keys()):
-                raise Exception("Error: Topic not registered")
+        def dequeue(self, topicName:str, partition = None):
+            regTopicName = topicName
+            if partition:
+                regTopicName += '#' + str(partition)
             try:
-                id = self.cids[topicName]
-                print(self.outer.url+"/consumer/consume")
-                json = {
-                        "topic":topicName,
-                        "consumer_id":id
-                    }
-                print(json)
+                if regTopicName not in self.cids.keys():
+                    raise Exception("Error: Topic not registered")
+                id = self.cids[regTopicName]
+                params = {
+                    "topic": topicName,
+                    "consumer_id": str(id)
+                }
+
+                if partition:
+                    params["partition"] = str(partition)
+
                 res = requests.get(
-                    self.outer.url+"/consumer/consume",
-                    params=json
+                    self.outer.url + "/consumer/consume",
+                    params = params
                 )
-                if(res.json().get("status")=="Success"):
+
+                if(res.json().get("status") == "Success"):
                     return res.json().get("message")
                 else:
                     raise Exception(res.json.get("message"))
             except Exception as err:
                 return str(err)
+
         '''
         Method to get queue size belonging to some topic name
         @param topicName
         @return size of the queue
         '''
-        def getSize(self,topicName):
+        def getSize(self,topicName,partition):
             if(topicName not in self.cids.keys()):
                 raise Exception("Error: Topic not registered")
             try:
@@ -220,7 +270,8 @@ class MyQueue:
                     self.outer.url+"/size",
                     params={
                         "topic":topicName,
-                        "consumer_id":self.cids[topicName]
+                        "consumer_id":self.cids[topicName],
+                        "partition":partition
                     }
                 )
                 if(res.json().get("status")=="Success"):

@@ -10,11 +10,11 @@ class MyQueue:
     @return Topic object
     '''
 
-    def createTopic(self,topicName:str):
+    def createTopic(self, topicName:str):
         try:
-            print(str("^^^^^^")+topicName)
-            res = requests.post(self.url+"/topics",json={
-                "name":topicName
+            print(str("^^^^^^") + topicName)
+            res = requests.post(self.url + "/topics",json={
+                "name": topicName
             })
             print(res.json())
             if(res.json().get("status")=="Success"):
@@ -24,6 +24,21 @@ class MyQueue:
                 #print(str(res.json()))
                 raise Exception(res.json().get("message"))
 
+        except Exception as err:
+            return str(err)
+
+    def get_partition_count(self, topicName):
+        try:
+            res = requests.get(
+                self.url + "/get_partition_count",
+                params = {
+                    'topic': topicName
+                }
+            )
+            if(res.json().get("status")=="Success"):
+                return res.json().get("count")
+            else:
+                raise Exception(res.json().get("message"))
         except Exception as err:
             return str(err)
 
