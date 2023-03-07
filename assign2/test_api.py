@@ -3,7 +3,7 @@ import os
 import multiprocessing, threading
 import random, time, re
 
-PATH = "./test_asgn2"
+PATH = "./test_asgn1"
 
 def producer(url, prod_name, topics):
     print(f"Producer {prod_name} started...")
@@ -15,7 +15,14 @@ def producer(url, prod_name, topics):
     for i in range(len(topics)):
         if topics[i][-1] == '#':
             topics[i] = topics[i][:-1]
-            numPartitions = Q.get_partition_count(topics[i])
+            while True:
+                try:
+                    numPartitions = int(Q.get_partition_count(topics[i]))
+                    
+                    break
+                except:
+                    continue
+            
             partition = int(random.random() * numPartitions) + 1
             topicMap[topics[i]] = partition
         else:
@@ -23,7 +30,7 @@ def producer(url, prod_name, topics):
 
     while True:
         try:
-            P = Q.createProducer(topicMap, True)
+            P = Q.createClient(topicMap, True)
             print(f"{prod_name}: Producer successfully created.")
             break
         except Exception as e:
@@ -44,7 +51,12 @@ def producer(url, prod_name, topics):
 
     for tup in prod_msg:
         topic, partition, msg = tup
-        ret = P.enqueue(msg, topic, partition)
+        while True:
+            try:
+                ret = P.enqueue(msg, topic, partition)
+                break
+            except:
+                continue
         if ret == 0:
             print(f"{prod_name}: Enqueuing topic {topic}, partition {partition} with msg {msg}: SUCCESS")
         else:
@@ -60,15 +72,23 @@ def consumer(url, con_name, topics):
     for i in range(len(topics)):
         if topics[i][-1] == '#':
             topics[i] = topics[i][:-1]
-            numPartitions = Q.get_partition_count(topics[i])
-            partition = int(random.random() * numPartitions) + 1
-            topicMap[topics[i]] = partition
+            while(True):
+                try:
+                    numPartitions = int(Q.get_partition_count(topics[i]))
+                    partition = int(random.random() * numPartitions) + 1
+                    topicMap[topics[i]] = partition
+                    break
+                except:
+                    continue
+            
+            
+            
         else:
             topicMap[topics[i]] = 0
 
     while True:
         try:
-            C = Q.createConsumer(topicMap, False)
+            C = Q.createClient(topicMap, False)
             print(f"{con_name}: Consumer successfully created.")
             break
         except Exception as e:
@@ -77,8 +97,15 @@ def consumer(url, con_name, topics):
     while True:
         for topic in topics:
             partition = topicMap[topic]
-            ret = C.dequeue(topic, partition)
-            print(f"{con_name}: Dequeuing from topic {topic}, partition {partition}: Response: {ret}")
+            while True:
+                try:
+                    ret = C.dequeue(topic, partition)
+                    break
+                except:
+                    continue
+            
+            if ret:
+                print(f"{con_name}: Dequeuing from topic {topic}, partition {partition}: Response: {ret}")
 
 
 def run_test(url = "http://127.0.0.1:5124"):
@@ -90,7 +117,8 @@ def run_test(url = "http://127.0.0.1:5124"):
 
     prod_proc = []
     cons_proc = []
-
+    Q = MyQueue(url)
+    Q.createTopic("Hoooooooo")
     for line in fp.readlines():
         line = line.split(':')
         for wrd in line:
@@ -98,7 +126,13 @@ def run_test(url = "http://127.0.0.1:5124"):
         topic_ = line[0]
         prods_ = line[1].split()
         cons_ = line[2].split()
-
+        while(True):
+            try:
+                print(topic_)
+                Q.createTopic(topic_)
+                break
+            except:
+                continue
         topics.append(topic_)
         
         for prod_ in prods_:

@@ -40,7 +40,7 @@ class MyQueue:
             else:
                 raise Exception(res.json().get("message"))
         except Exception as err:
-            return str(err)
+            raise err
 
     '''
     Method To get all Topics
@@ -193,9 +193,9 @@ class MyQueue:
                     for topic in self.cids.keys():
                         delay = random.random()
                         time.sleep(delay)
-                        
-                        if(self.getSize(topic)>0):
-                            msg = self.dequeue(topic)
+                        msg = self.dequeue(topic)
+                        if(msg):
+                            
                             #TODO
                             print("Dequeued: {} by consumer {}".format(msg,self.cids[self.cids.keys()[0]]))
                     
@@ -255,7 +255,7 @@ class MyQueue:
                 else:
                     raise Exception(res.json.get("message"))
             except Exception as err:
-                return str(err)
+                return None
 
         '''
         Method to get queue size belonging to some topic name
