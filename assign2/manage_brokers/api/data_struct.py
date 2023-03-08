@@ -46,6 +46,10 @@ class TopicMetaData:
         numPartitions = int(val)
         if  numPartitions ==0: numPartitions = 1
         file.write("INFO Choosing {} partitions for topic {}".format(numPartitions, topicName))
+        
+
+        # Choose the brokers (TODO how?)
+        numPartitions, assignedBrokers = Manager.assignBrokers(topicName, numPartitions)
         self.lock.acquire()
         if topicName in self.Topics:
             self.lock.release()
@@ -53,10 +57,6 @@ class TopicMetaData:
         topicID = len(self.Topics) + 1
         self.Topics[topicName] = [topicID, numPartitions, 0]
         self.lock.release()
-
-        # Choose the brokers (TODO how?)
-        numPartitions, assignedBrokers = Manager.assignBrokers(topicName, numPartitions)
-
         # All Brokers are down
         if numPartitions == 0:
             del self.Topics[topicName]
@@ -289,12 +289,13 @@ class Manager:
             # TODO assign the broker url
             brokerID = brokerList[i]
             brokerTopicName = str(actualPartitions + 1) + '#' + topicName
-
-            res = requests.post(cls.brokers[brokerID].url + "/topics", 
+            print("Hiiiiiiiiiiiiiiii")
+            url = cls.brokers[brokerID].url
+            res = requests.post(str(url) + "/topics", 
             json={
                 "name": brokerTopicName
             })
-
+            print("Hiiiiiiiiiiiiiiii2")
             # Post request to the broker to create the topic
 
             # Broker failure (TODO: what to do?)
@@ -467,7 +468,7 @@ class Docker:
         docker_id = 0
         print("broker"+str(curr_id),db_uri,docker_img_broker)
         os.system("docker rm -f broker"+str(curr_id))
-        os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
+        os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  --rm {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
         url = 'http://' + obj.decode('utf-8').strip() + ':5124'

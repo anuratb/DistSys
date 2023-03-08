@@ -171,13 +171,13 @@ def register_producer():
 
 @ app.route("/producer/produce", methods=['POST'])
 def enqueue():
-    
+    print("Enqueue called")
     try:
         topicName: str = request.get_json().get('topic')
         partition = request.get_json().get("partition")
         producer_id: int = request.get_json().get('producer_id')
         message: str = request.get_json().get('message')
-
+        print(topicName,partition,producer_id,message)
         topic = str(partition) + '#' + topicName
 
         Queue.enqueue(topic, producer_id , message)

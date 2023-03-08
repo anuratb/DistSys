@@ -231,7 +231,7 @@ def enqueue():
             partition = request.get_json().get('partition')
             brokerUrl = Manager.getBrokerUrl(topic, int(partition))
             #return redirect(brokerUrl + "/producer/produce", 307)
-            return requests.post(
+            obj = requests.post(
                 brokerUrl + "/producer/produce",
                 json = {
                     "topic": topic,
@@ -240,6 +240,8 @@ def enqueue():
                     "partition":partition
                 }
             ).json()
+            a = obj
+            return  obj
      
     except Exception as e:
         return {
@@ -282,7 +284,7 @@ def testB():
 @ app.route("/consumer/consume", methods=['GET'])
 def dequeue():
     try:
-
+        '''
         if(IsWriteManager):
             topic: str = request.args.get('topic')
             consumer_id: str = request.args.get('consumer_id')
@@ -300,40 +302,45 @@ def dequeue():
             #print(obj.text)
             return obj.json()
         else:
+            '''
+        topic: str = request.args.get('topic')
+        consumer_id: str = request.args.get('consumer_id')
+        #Update topic rrindex
+        Manager.topicMetaData.Topics[topic][2]+=1
+        ###################### DB Update ############################
+        TopicDB.query.filter_by(topicName=topic).first().rrindex = Manager.topicMetaData.Topics[topic][2]
+        db.session.commit()
+        #############################################################
+        if consumer_id[0] == '$':
             
-            topic: str = request.args.get('topic')
-            consumer_id: str = request.args.get('consumer_id')
-            
-            if consumer_id[0] == '$':
-                
-                brokerID, conID,partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
-                brokerUrl = Manager.getBrokerUrlFromID(brokerID)
-                res = requests.get(
-                    brokerUrl + "/consumer/consume",
-                    params = {
-                        "topic": topic,
-                        "consumer_id": str(conID),
-                        "partition":partition
-                    }
-                )
-                if(res.json().get("status") == "Success"):
-                    msg = res.json().get("message")
-                    return {
-                        "status": "Success",
-                        "message": msg
-                    }
-                else:
-                    raise Exception(res.json.get("message"))
+            brokerID, conID,partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
+            brokerUrl = Manager.getBrokerUrlFromID(brokerID)
+            res = requests.get(
+                brokerUrl + "/consumer/consume",
+                params = {
+                    "topic": topic,
+                    "consumer_id": str(conID),
+                    "partition":partition
+                }
+            )
+            if(res.json().get("status") == "Success"):
+                msg = res.json().get("message")
+                return {
+                    "status": "Success",
+                    "message": msg
+                }
             else:
-                partition = request.get_json().get('partition')
-                brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-                #obj =  redirect(brokerUrl + "/consumer/consumer", 307)
-                #print(obj.json())
-                return requests.get(brokerUrl + "/consumer/consume", params = {
-                        "topic": topic,
-                        "consumer_id": str(consumer_id),
-                        "partition":str(partition)
-                    }).json()
+                raise Exception(res.json.get("message"))
+        else:
+            partition = request.args.get('partition')
+            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
+            #obj =  redirect(brokerUrl + "/consumer/consumer", 307)
+            #print(obj.json())
+            return requests.get(brokerUrl + "/consumer/consume", params = {
+                    "topic": topic,
+                    "consumer_id": str(consumer_id),
+                    "partition":str(partition)
+                }).json()
 
     except Exception as e:
         return {

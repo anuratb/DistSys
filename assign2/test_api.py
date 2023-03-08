@@ -26,7 +26,7 @@ def producer(url, prod_name, topics):
             partition = int(random.random() * numPartitions) + 1
             topicMap[topics[i]] = partition
         else:
-            topicMap[topics[i]] = 0
+            topicMap[topics[i]] = None
 
     while True:
         try:
@@ -46,7 +46,7 @@ def producer(url, prod_name, topics):
             for line in open(PATH + "/" + file).readlines():
                 _, msg, _, topic = line.split()
                 topic = "T" + topic[2:3]
-                prod_msg.append((topic, topicMap[topic], msg))
+                prod_msg.append((topic, topicMap[topic], line))
 
 
     for tup in prod_msg:
@@ -58,9 +58,9 @@ def producer(url, prod_name, topics):
             except:
                 continue
         if ret == 0:
-            print(f"{prod_name}: Enqueuing topic {topic}, partition {partition} with msg {msg}: SUCCESS")
+            print(f"{prod_name}: Enqueuing topic {topic}, partition {partition} with msg {line}: SUCCESS")
         else:
-            print(f"{prod_name}: Enqueuing topic {topic}, partition {partition} with msg {msg}: FAILURE: {ret}")
+            print(f"{prod_name}: Enqueuing topic {topic}, partition {partition} with msg {line}: FAILURE: {ret}")
 
     
 def consumer(url, con_name, topics):

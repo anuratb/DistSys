@@ -5,9 +5,9 @@ class TopicNode:
     
     def __init__(self, topicID_):
         self.topicID = topicID_
-        self.producerList = [0, 1] # List of subscribed producers
+        self.producerList = [] # List of subscribed producers
         self.plock = threading.Lock() # Lock for producerList
-        self.consumerList = [0, 1] # List of subscribed consumers
+        self.consumerList = [] # List of subscribed consumers
         self.clock = threading.Lock() # Lock for consumerList
         
     def subscribeProducer(self, producerID_):
@@ -132,16 +132,21 @@ class Queue:
 
     @classmethod
     def enqueue(cls, topicName, prodID, msg):
+        
+        #print("Enqueueing: ", topicName, prodID, msg)
+        #print(cls.topics.get(topicName).producerList)
+      
         # Check if topic exists
         try:
             topicID = cls.topics[topicName].topicID
         except Exception as _:
             raise Exception("Error: No such topic exists!")
-        
+        #print("----------------------")
         # Check if user is registered for the topic
-        if prodID not in cls.topics.get(topicName).producerList:
+        if int(prodID) not in cls.topics.get(topicName).producerList:
+            print(prodID, cls.topics.get(topicName).producerList)
             raise Exception("Error: Invalid producer ID!")
-
+        #print("----------------------")
         # Get the lock for the queue with topicName
         lock = cls.locks[topicID]
         cls.glob_lck.acquire()
@@ -152,6 +157,7 @@ class Queue:
         lock.acquire()
         if(len(cls.queue[topicID])>0): prev_id = cls.queue[topicID][-1][0]
         cls.queue[topicID].append([nid,msg])
+        print("----------------------")
         #print(prev_id,cls.queue[topicID])
         #DB updates
         if(prev_id is None):
