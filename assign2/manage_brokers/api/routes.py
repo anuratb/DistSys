@@ -11,7 +11,7 @@ from api import IsWriteManager, readManagerURL
 from flask_executor import Executor
 
 
-
+executor = Executor(app)
 
 '''
     a. CreateTopic
@@ -201,13 +201,18 @@ def enqueue():
     try:
         if producer_id[0] == '$':
             #Update topic rrindex
-            Manager.topicMetaData.Topics[topic][2]+=1
+            Manager.topicMetaData.Topics[topic][3].acquire()
+            rrIndex = Manager.topicMetaData.Topics[topic][2]
+            Manager.topicMetaData.Topics[topic][2] += 1
+
             ###################### DB Update ############################
             obj = TopicDB.query.filter_by(topicName=topic).first()
             obj.rrindex = Manager.topicMetaData.Topics[topic][2]
             db.session.commit()
             #############################################################
-            brokerID, prodID, partition = Manager.producerMetaData.getRRIndex(producer_id, topic)
+            Manager.topicMetaData.Topics[topic][3].release()
+            
+            brokerID, prodID, partition = Manager.producerMetaData.getRRIndex(producer_id, topic, rrIndex)
             brokerUrl = Manager.getBrokerUrlFromID(brokerID)
 
             res = requests.post(
@@ -220,7 +225,6 @@ def enqueue():
                 }
             )
             if(res.json().get("status") == "Success"):
-                
                 return {
                     "status": "Success",
                     "message": ""
@@ -230,7 +234,7 @@ def enqueue():
         else:
             partition = request.get_json().get('partition')
             brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-            #return redirect(brokerUrl + "/producer/produce", 307)
+
             obj = requests.post(
                 brokerUrl + "/producer/produce",
                 json = {
@@ -240,7 +244,7 @@ def enqueue():
                     "partition":partition
                 }
             ).json()
-            a = obj
+
             return  obj
      
     except Exception as e:
@@ -269,78 +273,62 @@ def enqueue():
 '''
 
 
-@app.route("/testA", methods=['GET'])
-def testA():
-    a = request.args.get('a')
-    return {
-        "status": "Success",
-        "message": "Test A"+str(a),
-        
-    }
-@app.route("/testB", methods=['GET'])
-def testB():
-    return redirect("/testA",307)
 
 @ app.route("/consumer/consume", methods=['GET'])
 def dequeue():
+    topic: str = request.args.get('topic')
+    consumer_id: str = request.args.get('consumer_id')
+    partition = None
     try:
-        '''
-        if(IsWriteManager):
-            topic: str = request.args.get('topic')
-            consumer_id: str = request.args.get('consumer_id')
+        if IsWriteManager:
             #Update topic rrindex
-            Manager.topicMetaData.Topics[topic][2]+=1
+            Manager.topicMetaData.Topics[topic][3].acquire()
+            rrIndex = Manager.topicMetaData.Topics[topic][2]
+            Manager.topicMetaData.Topics[topic][2] += 1
             ###################### DB Update ############################
-            TopicDB.query.filter_by(topicName=topic).first().rrindex = Manager.topicMetaData.Topics[topic][2]
+            TopicDB.query.filter_by(topicName = topic).first().rrindex = rrIndex + 1
             db.session.commit()
             #############################################################
-            ind = int(random()*len(readManagerURL))
-            target_url = readManagerURL[ind]+"/consumer/consume"
-            url_with_param="{}?topic={}&consumer_id={}".format(target_url,topic,consumer_id)
-            #obj = redirect(target_url, 307) #redirect to read manager
-            obj = requests.get(url_with_param)#Redirect not working
-            #print(obj.text)
-            return obj.json()
-        else:
-            '''
-        topic: str = request.args.get('topic')
-        consumer_id: str = request.args.get('consumer_id')
-        #Update topic rrindex
-        Manager.topicMetaData.Topics[topic][2]+=1
-        ###################### DB Update ############################
-        TopicDB.query.filter_by(topicName=topic).first().rrindex = Manager.topicMetaData.Topics[topic][2]
-        db.session.commit()
-        #############################################################
-        if consumer_id[0] == '$':
+            Manager.topicMetaData.Topics[topic][3].release()
             
-            brokerID, conID,partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic)
-            brokerUrl = Manager.getBrokerUrlFromID(brokerID)
-            res = requests.get(
-                brokerUrl + "/consumer/consume",
-                params = {
-                    "topic": topic,
-                    "consumer_id": str(conID),
-                    "partition":partition
-                }
-            )
-            if(res.json().get("status") == "Success"):
-                msg = res.json().get("message")
-                return {
-                    "status": "Success",
-                    "message": msg
-                }
-            else:
-                raise Exception(res.json.get("message"))
+            ind = int(random() * len(readManagerURL))
+            target_url = readManagerURL[ind] + "/consumer/consume"
+            url_with_param="{}?topic={}&consumer_id={}&topicRRIndex={}".format(target_url, topic, consumer_id, rrIndex)
+            
+            if consumer_id[0] == '$':
+                partition = request.args.get('partition')
+                url_with_param = f"{url_with_param}&partition={partition}"
+
+            return redirect(url_with_param, 307) #redirect to read manager
         else:
-            partition = request.args.get('partition')
-            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-            #obj =  redirect(brokerUrl + "/consumer/consumer", 307)
-            #print(obj.json())
-            return requests.get(brokerUrl + "/consumer/consume", params = {
-                    "topic": topic,
-                    "consumer_id": str(consumer_id),
-                    "partition":str(partition)
-                }).json()
+            if consumer_id[0] == '$':
+                topicRRIndex = int(request.args.get('topicRRIndex'))
+                brokerID, conID, partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic, topicRRIndex)
+                brokerUrl = Manager.getBrokerUrlFromID(brokerID)
+                res = requests.get(
+                    brokerUrl + "/consumer/consume",
+                    params = {
+                        "topic": topic,
+                        "consumer_id": str(conID),
+                        "partition":partition
+                    }
+                )
+                if(res.json().get("status") == "Success"):
+                    msg = res.json().get("message")
+                    return {
+                        "status": "Success",
+                        "message": msg
+                    }
+                else:
+                    raise Exception(res.json.get("message"))
+            else:
+                partition = request.args.get('partition')
+                brokerUrl = Manager.getBrokerUrl(topic, int(partition))
+                return requests.get(brokerUrl + "/consumer/consume", params = {
+                        "topic": topic,
+                        "consumer_id": str(consumer_id),
+                        "partition":str(partition)
+                    }).json()
 
     except Exception as e:
         return {
@@ -419,11 +407,12 @@ def removeBroker():
 def crashRecovary():
     try:
         brokerID = int(request.args.get('brokerID'))
-        
-        #executor.submit(Docker.restartBroker, brokerID = brokerID)
-        Docker.restartBroker(brokerID)
+        executor.submit(Docker.restartBroker, brokerID = brokerID)
+        # Docker.restartBroker(brokerID)
+        print("success")
         return "success"
     except Exception as e:
+        print("failure")
         return str(e)
 
 
@@ -433,3 +422,15 @@ def job():
     print("A")
     while True: pass
     # return str(100)
+
+@app.route('/hello')
+def hello():
+    if IsWriteManager:
+        brokerID = int(request.args.get('brokerID'))
+        ind = int(random()*len(readManagerURL))
+        target_url = readManagerURL[ind] + "/hello"
+        url_with_param="{}?brokerID={}&ID=100".format(target_url, brokerID)
+        return redirect(url_with_param, 307) #redirect to read manager
+    else:
+        brokerID = int(request.args.get('ID'))
+        return "$$$" + str(brokerID)

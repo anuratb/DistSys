@@ -46,21 +46,21 @@ def producer(url, prod_name, topics):
             for line in open(PATH + "/" + file).readlines():
                 _, msg, _, topic = line.split()
                 topic = "T" + topic[2:3]
-                prod_msg.append((topic, topicMap[topic], line))
-
+                prod_msg.append((topic, topicMap[topic], msg))
 
     for tup in prod_msg:
         topic, partition, msg = tup
         while True:
             try:
                 ret = P.enqueue(msg, topic, partition)
+                if ret == 0:
+                    print(f"{prod_name}: SUCCESS: Enqueuing topic {topic}, partition {partition} with msg {msg}")
+                else:
+                    print(f"{prod_name}: FAILURE: Enqueuing topic {topic}, partition {partition} with msg {msg}: {ret}")
                 break
             except:
                 continue
-        if ret == 0:
-            print(f"{prod_name}: Enqueuing topic {topic}, partition {partition} with msg {line}: SUCCESS")
-        else:
-            print(f"{prod_name}: Enqueuing topic {topic}, partition {partition} with msg {line}: FAILURE: {ret}")
+        
 
     
 def consumer(url, con_name, topics):
@@ -98,14 +98,16 @@ def consumer(url, con_name, topics):
         for topic in topics:
             partition = topicMap[topic]
             while True:
+                time.sleep(random.random())
                 try:
                     ret = C.dequeue(topic, partition)
                     break
                 except:
+                    print(f"{con_name}: FAILURE: Dequeuing from topic {topic}, partition {partition}: Response: {ret}")
                     continue
             
             if ret:
-                print(f"{con_name}: Dequeuing from topic {topic}, partition {partition}: Response: {ret}")
+                print(f"{con_name}: SUCCESS: Dequeuing from topic {topic}, partition {partition}: Response: {ret}")
 
 
 def run_test(url = "http://127.0.0.1:5124"):
@@ -118,7 +120,7 @@ def run_test(url = "http://127.0.0.1:5124"):
     prod_proc = []
     cons_proc = []
     Q = MyQueue(url)
-    Q.createTopic("Hoooooooo")
+
     for line in fp.readlines():
         line = line.split(':')
         for wrd in line:
@@ -152,6 +154,7 @@ def run_test(url = "http://127.0.0.1:5124"):
                 topic = topic_ + '#'
             if(con not in cons.keys()): cons[con] = []
             cons[con].append(topic)
+
 
     for prod, topics in prods.items():
         proc = multiprocessing.Process(target=producer, args=(url, prod, topics))

@@ -1,5 +1,5 @@
 import threading
-from . import db,executor,app
+from . import db,app
 import json
 import os, requests, time
 from api import random
@@ -29,7 +29,7 @@ BROKER_URL = "http://127.0.0.1:5124"
 class TopicMetaData:
 
     def __init__(self):
-        # Map from topicName to {topicID, numPartitions,rrindex}
+        # Map from topicName to {topicID, numPartitions, rrindex, lock}
         self.Topics = {}
         # A map from partiton#topicName to the corresponding brokerID
         self.PartitionBroker = {}
@@ -44,29 +44,45 @@ class TopicMetaData:
         numBrokers = len(Manager.brokers)
         val = random() * numBrokers
         numPartitions = int(val)
-        if  numPartitions ==0: numPartitions = 1
+        if  numPartitions == 0: numPartitions = 1
+
         file.write("INFO Choosing {} partitions for topic {}".format(numPartitions, topicName))
-        
 
         # Choose the brokers (TODO how?)
         numPartitions, assignedBrokers = Manager.assignBrokers(topicName, numPartitions)
+
         self.lock.acquire()
         if topicName in self.Topics:
             self.lock.release()
             raise Exception(f'Topicname: {topicName} already exists')
         topicID = len(self.Topics) + 1
-        self.Topics[topicName] = [topicID, numPartitions, 0]
+        self.Topics[topicName] = [topicID, numPartitions, 0, threading.Lock()]
         self.lock.release()
+
         # All Brokers are down
         if numPartitions == 0:
             del self.Topics[topicName]
             raise Exception("Service currently unavailable. Please try again later.")
-
+        
         # Now update with actual no of paritions created
         self.Topics[topicName][1] = numPartitions
 
+        partitionNo = 1
         for K in assignedBrokers.keys():
             self.PartitionBroker[K] = assignedBrokers[K]
+
+            ####################### DB UPDATES ###########################
+            db.session.add(
+                TopicBroker(
+                    topic = topicName,
+                    brokerID = assignedBrokers[K],
+                    partition = partitionNo
+                )
+            )
+            file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, assignedBrokers[K], partitionNo))
+            partitionNo += 1
+        
+        db.session.commit()
 
         ########### DB update ##############
         obj = TopicDB(topicName=topicName,numPartitions=numPartitions,topic_id=topicID,rrindex=0)
@@ -115,6 +131,7 @@ class ProducerMetaData:
         self.rrIndex[K] = 0
         self.rrIndexLock[K] = threading.Lock()
         self.subscription[K] = clientIDs
+
         ################## DB Updates #####################
         glob_prod = globalProducerDB(glob_id=clientID,topic = topicName,rrindex=0,brokerCnt = len(clientIDs))
         file.write("db.session.add(globalProducerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
@@ -126,6 +143,7 @@ class ProducerMetaData:
             for prod_id,partition in prod_ids:
                 local_prods.append(localProducerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID,partition=partition))
                 file.write("db.session.add(localProducerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
+    
         cur_rrindex = random()*len(local_prods)
         glob_prod.rrindex = cur_rrindex
         db.session.add(glob_prod)
@@ -147,46 +165,19 @@ class ProducerMetaData:
     '''
     Returns the brokerID and prodID to which the message should be sent
     '''
-    def getRRIndex(self, clientID, topicName):
-        #TODO
+    def getRRIndex(self, clientID, topicName, rrIndex):
+        globProd = globalProducerDB.query.filter_by(glob_id=clientID, topic=topicName).first()
 
-        globProd = globalProducerDB.query.filter_by(glob_id=clientID,topic=topicName).first()
-        #current_index = globProd.rrindex
         #To ensure load balancing
         cnt = len(globProd.localProducer)
-        topicObj = TopicDB.query.filter_by(topicName=topicName).first()
-        ind = (int(topicObj.rrindex)+int(globProd.rrindex))%cnt
-        '''
-        obj = BrokerMetaDataDB.query.filter_by(broker_id=current_index).first()
-        L = len(BrokerMetaDataDB.query.filter_by(broker_id=current_index))
-        partitionID = 0
-        if L > 2:
-            partitionID = int(random() * (L - 1))
-        brokerID = obj.broker_id
-        '''
+        ind = (rrIndex + int(globProd.rrindex)) % cnt
+
         localProd = globProd.localProducer[ind]
         prodID= localProd.local_id
         partition = localProd.partition
         brokerID = localProd.broker_id
-        #current_index = (current_index + 1) % cnt
-        ########### DB update ##############
-        #globalProducerDB.query.filter_by(glob_id=clientID,topic=topicName).first().rrindex=current_index
-        #db.session.commit()
-        #########################################
-        return brokerID, prodID, partition
 
-        if topicName not in Manager.topicMetaData.Topics:
-            raise Exception(f"Topic {topicName} doesn't exist")
-        K = clientID + "#" + topicName
-        self.rrIndexLock[K].acquire()
-        nextBroker = self.rrIndex[K]
-        self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K])
-        self.rrIndexLock[K].release()
-        
-        index = 0
-        if L > 2:
-            index = int(random() * (L - 1))
-        return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][index + 1][0], self.subscription[K][nextBroker][index + 1][1]
+        return brokerID, prodID, partition
 
 
 class ConsumerMetaData:
@@ -238,39 +229,30 @@ class ConsumerMetaData:
             return False
         return True
 
-    def getRRIndex(self, clientID, topicName):#For now no need to update db here
+    def getRRIndex(self, clientID, topicName, topic_rrindex):#For now no need to update db here
         if topicName not in [obj.topicName for obj in TopicDB.query.all()]:
             raise Exception(f"Topic {topicName} doesn't exist")
-        K = clientID + "#" + topicName
-        #self.rrIndexLock[K].acquire()
-        cons_rrindex = globalConsumerDB.query.filter_by(glob_id=clientID,topic=topicName).first().rrindex
-        #self.rrIndex[K] = (self.rrIndex[K] + 1) % len(self.subscription[K])
-        #self.rrIndexLock[K].release()
-        #topic_rrindex = Manager.topicMetaData.Topics[topicName][2]
-        topic_rrindex = TopicDB.query.filter_by(topicName=topicName).first().rrindex
+        cons_rrindex = globalConsumerDB.query.filter_by(glob_id=clientID, topic=topicName).first().rrindex
         globCons = globalConsumerDB.query.filter_by(glob_id=clientID,topic=topicName).first()
-        #current_index = globProd.rrindex
+
         #To ensure load balancing
         cnt = len(globCons.localConsumer)
         ind = (cons_rrindex + topic_rrindex) % (cnt)
+
         localCons = globCons.localConsumer[ind]
         ConsID= localCons.local_id
         partition = localCons.partition
         brokerID = localCons.broker_id
+
         return brokerID, ConsID,partition
-        #L = len(self.subscription[K][nextBroker])
-        #index = 0
-        #if L > 2:
-        #    index = int(random() * (L - 1))
-        #return self.subscription[K][nextBroker][0], self.subscription[K][nextBroker][index + 1][0], self.subscription[K][nextBroker][index + 1][1]
+
 
 class Manager:
     topicMetaData = TopicMetaData()
     consumerMetaData = ConsumerMetaData()
     producerMetaData = ProducerMetaData()
-    # A map from broker ID to broker Metadata
-    # TODO how to add broker Metadata?
     lock = threading.Lock()
+    # A map from broker ID to broker Metadata
     brokers = {}
     X = 0
 
@@ -289,30 +271,24 @@ class Manager:
             # TODO assign the broker url
             brokerID = brokerList[i]
             brokerTopicName = str(actualPartitions + 1) + '#' + topicName
-            print("Hiiiiiiiiiiiiiiii")
+
             url = cls.brokers[brokerID].url
             res = requests.post(str(url) + "/topics", 
-            json={
-                "name": brokerTopicName
-            })
-            print("Hiiiiiiiiiiiiiiii2")
+                json = {
+                    "name": brokerTopicName
+                }
+            )
+
             # Post request to the broker to create the topic
 
             # Broker failure (TODO: what to do?)
             if res.status_code != 200:
                 # Restart the broker
-                executor.submit(Docker.restartBroker, brokerID = brokerID)
+                # executor.submit(Docker.restartBroker, brokerID = brokerID)
+                pass
             elif(res.json().get("status") == "Success"):
                 PartitionBroker[brokerTopicName] = brokerID
-                ####################### DB UPDATES ###########################
-                db.session.add(TopicBroker(
-                    topic = topicName,
-                    brokerID = brokerID,
-                    partition = actualPartitions + 1))
-                file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, brokerID, actualPartitions + 1))    
-                actualPartitions += 1
-        db.session.commit()
-            
+                actualPartitions += 1    
         return actualPartitions, PartitionBroker
 
     @classmethod
@@ -344,7 +320,8 @@ class Manager:
             # TODO Broker Failure
             if res.status_code != 200:
                 # Restart the broker
-                executor.submit(Docker.restartBroker, brokerID = brokerID)
+                # executor.submit(Docker.restartBroker, brokerID = brokerID)
+                pass
             elif(res.json().get("status") != "Success"):
                 raise Exception(res.json().get("message"))
             else:
@@ -387,8 +364,8 @@ class Manager:
                 broker.last_beat = time.monotonic()
                 broker.lock.release()
             else:
-                Docker.restartBroker(key)
-                #_ = requests.get("http://127.0.0.1:5124/crash_recovery", params = {'brokerID': str(broker.brokerID)})
+                # Docker.restartBroker(key)
+                _ = requests.get("http://127.0.0.1:5124/crash_recovery", params = {'brokerID': str(broker.brokerID)})
     
     # @classmethod
     # def crashRecovery(cls, brokerID):
@@ -502,58 +479,38 @@ class Docker:
     @classmethod
     def restartBroker(cls, brokerId):
         # TODO Ping the broker before creating one
-
-        #cls.lock.acquire()
-        #curr_id = cnt
-        #cnt += 1
-        #cls.lock.release()
-        #new_broker_nme = "broker" + str(curr_id)
+        print("HELLL")
         oldBrokerObj:BrokerMetaData = Manager.brokers[brokerId]
 
-        ############## Connect to Database #######################
-        #conn = psycopg2.connect(
-        #    user=db_username, password=db_password, host=db_host, port= db_port
-        #)
-        #conn.autocommit = True
-        #
-        #cursor = conn.cursor()
-        #sql = '''CREATE database {};'''.format(broker_nme)
-        #cursor.execute(sql)
-        #
-        #conn.close()
-        ####################################################
-
         db_uri = oldBrokerObj.DB_URI
-        #obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
 
-        ###################### DB UPDATES ############################
-        #
-        #obj  = DockerDB()
-        #file.write("db.session.add(DockerDB()")
-        #db.session.add(obj)
-        #db.session.commit()
-        ##############################################################
+        Manager.brokers[brokerId].lock.acquire()
+        # Check if the server is still dead
+        print("HELLL")
+        val = is_server_running(oldBrokerObj.url)
+        if val:
+            # Server already restarted
+            Manager.brokers[brokerId].lock.release()
+            return
+        print("HELLL")
         docker_id = 0
         os.system("docker rm -f {}".format(oldBrokerObj.docker_name))
         os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format(oldBrokerObj.docker_name,db_uri,docker_img_broker))
-        #url = json.loads(str(obj))["NetworkSettings"]["IPAddress"] + ":5124/"
         url = get_url(oldBrokerObj.docker_name)
         url = 'http://' + url + ':5124'
-        Manager.brokers[brokerId].lock.acquire()
-        #self.id[new_broker_nme] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
-        #self.lock.release()
-        #TopicMetaData.lock.aquire()
-        #TopicMetaData.addBrokerUrl(url)
-        #TopicMetaData.lock.release()
+
         Manager.brokers[brokerId].url = url
         Manager.brokers[brokerId].docker_id = docker_id
+
         Manager.brokers[brokerId].lock.release()
+        print("HELLL")
         with app.app_context():
             ################# DB UPDATES ########################
             BrokerMetaDataDB.query.filter_by(broker_id = brokerId).update(dict(url = url,docker_id = docker_id))
             file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(brokerId,oldBrokerObj.docker_name,url,docker_id))
             db.session.commit()
             #####################################################
+
         return Manager.brokers[brokerId]
 
     def removeBroker(cls,brokerUrl):
