@@ -4,7 +4,7 @@ from api import app
 from api.data_struct import  Manager,Docker
 from api.models import TopicDB
 
-from api import db,random,DB_URI,executor
+from api import db,random,DB_URI
 
 import requests
 from api import IsWriteManager, readManagerURL
@@ -201,16 +201,17 @@ def enqueue():
     try:
         if producer_id[0] == '$':
             #Update topic rrindex
-            Manager.topicMetaData.Topics[topic][3].acquire()
-            rrIndex = Manager.topicMetaData.Topics[topic][2]
-            Manager.topicMetaData.Topics[topic][2] += 1
+            #Manager.topicMetaData.Topics[topic][3].acquire()
+            #rrIndex = Manager.topicMetaData.Topics[topic][2]
+            #Manager.topicMetaData.Topics[topic][2] += 1
 
             ###################### DB Update ############################
             obj = TopicDB.query.filter_by(topicName=topic).first()
-            obj.rrindex = Manager.topicMetaData.Topics[topic][2]
+            rrIndex = obj.rrindex
+            obj.rrindex = obj.rrindex+1            
             db.session.commit()
             #############################################################
-            Manager.topicMetaData.Topics[topic][3].release()
+            #Manager.topicMetaData.Topics[topic][3].release()
             
             brokerID, prodID, partition = Manager.producerMetaData.getRRIndex(producer_id, topic, rrIndex)
             brokerUrl = Manager.getBrokerUrlFromID(brokerID)
@@ -282,20 +283,22 @@ def dequeue():
     try:
         if IsWriteManager:
             #Update topic rrindex
-            Manager.topicMetaData.Topics[topic][3].acquire()
-            rrIndex = Manager.topicMetaData.Topics[topic][2]
-            Manager.topicMetaData.Topics[topic][2] += 1
+            #Manager.topicMetaData.Topics[topic][3].acquire()
+            
+            #Manager.topicMetaData.Topics[topic][2] += 1
+            #Manager.topicMetaData.Topics[topic][3].release()
             ###################### DB Update ############################
+            rrIndex = TopicDB.query.filter_by(topicName = topic).first().rrindex
             TopicDB.query.filter_by(topicName = topic).first().rrindex = rrIndex + 1
             db.session.commit()
             #############################################################
-            Manager.topicMetaData.Topics[topic][3].release()
+            
             
             ind = int(random() * len(readManagerURL))
             target_url = readManagerURL[ind] + "/consumer/consume"
             url_with_param="{}?topic={}&consumer_id={}&topicRRIndex={}".format(target_url, topic, consumer_id, rrIndex)
             
-            if consumer_id[0] == '$':
+            if consumer_id[0] != '$':
                 partition = request.args.get('partition')
                 url_with_param = f"{url_with_param}&partition={partition}"
 
@@ -407,7 +410,7 @@ def removeBroker():
 def crashRecovary():
     try:
         brokerID = int(request.args.get('brokerID'))
-        executor.submit(Docker.restartBroker, brokerID = brokerID)
+        executor.submit(Docker.restartBroker,  brokerID)
         # Docker.restartBroker(brokerID)
         print("success")
         return "success"

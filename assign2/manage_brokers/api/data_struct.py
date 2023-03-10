@@ -445,7 +445,8 @@ class Docker:
         docker_id = 0
         print("broker"+str(curr_id),db_uri,docker_img_broker)
         os.system("docker rm -f broker"+str(curr_id))
-        os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  --rm {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
+        cmd = "docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  --rm {}".format("broker"+str(curr_id),db_uri,docker_img_broker)
+        os.system(cmd)
         print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
         url = 'http://' + obj.decode('utf-8').strip() + ':5124'

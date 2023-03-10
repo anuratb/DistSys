@@ -188,7 +188,7 @@ class Queue:
             raise Exception("Error: No such topic exists!")
         
         # Check if user is registered for the topic
-        if conID not in cls.topics.get(topicName).consumerList:
+        if int(conID) not in cls.topics.get(topicName).consumerList:
             raise Exception("Error: Invalid consumer ID!")
         
         # Get the offset and lock
