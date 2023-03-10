@@ -239,6 +239,7 @@ if IsWriteManager:
     
     scheduler = BackgroundScheduler()
     job = scheduler.add_job(Manager.checkBrokerHeartBeat, 'interval', minutes = float(os.environ['HEART_BEAT_INTERVAL']))
+    job = scheduler.add_job(Manager.checkManagerHeartBeat, 'interval', minutes = 1.1*float(os.environ['HEART_BEAT_INTERVAL']))
     scheduler.start()
 
 

@@ -269,4 +269,10 @@ def size():
              "message" : str(e)
             }
 
+@app.route('/isAlive', methods=["GET"])
+def isAlive():
+    return {
+        "status": "Success"
+    }
+
 

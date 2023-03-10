@@ -415,6 +415,14 @@ def crashRecovary():
     except Exception as e:
         return str(e)
 
+@app.route('/crash_recovery_manager')
+def crashRecovaryManager():
+    try:
+        managerID = request.args.get('managerID')
+        executor.submit(Docker.restartManager,  managerID)
+        return "success"
+    except Exception as e:
+        return str(e)
 
 
 @app.route('/job')
@@ -434,3 +442,9 @@ def hello():
         print("HELL2")
         brokerID = int(request.args.get('brokerID'))
         return {'brokerID': "$$$" + str(brokerID)}
+
+@app.route('/isAlive', methods=["GET"])
+def isAlive():
+    return {
+        "status": "Success"
+    }

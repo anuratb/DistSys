@@ -57,6 +57,7 @@ def producer(url, prod_name, topics):
                     print(f"{prod_name}: SUCCESS: Enqueuing topic {topic}, partition {partition} with msg {msg}")
                 else:
                     print(f"{prod_name}: FAILURE: Enqueuing topic {topic}, partition {partition} with msg {msg}: {ret}")
+                    continue
                 break
             except:
                 continue

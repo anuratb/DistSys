@@ -2,8 +2,8 @@ import threading
 from . import db,app
 import json
 import os, requests, time
-from api import random
-from api.models import TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB,DockerDB
+from api import random,DB_URI
+from api.models import ManagerDB, TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB,DockerDB
 from sqlalchemy_utils.functions import database_exists
 from api import db_host,db_port,db_password,db_username,docker_img_broker, APP_URL
 import subprocess
@@ -354,6 +354,14 @@ class Manager:
                 broker.lock.release()
             else:
                 requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(broker.brokerID)})
+    def checkManagerHeartBeat():
+        with app.app_context():
+            for obj in ManagerDB.query.all():
+                val = is_server_running(obj.url)
+                if val:
+                    pass
+                else:
+                    requests.get(APP_URL + "/crash_recovery_manager", params = {'managerID': str(obj.id)})
         
 
 class BrokerMetaData:
@@ -493,9 +501,42 @@ class Docker:
 
         return Manager.brokers[brokerId]
 
+    @classmethod
+    def restartManager(cls, managerId):
+        # TODO Ping the broker before creating one
+        print("HELLL")
+        oldManagerObj = ManagerDB.query.filter_by(id = managerId).first()
+
+        db_uri = DB_URI #sharing database 
+             
+
+        # Check if the server is still dead
+        print("HELLL")
+        val = is_server_running(oldManagerObj.url)
+        if val:
+            # Server already restarted
+            
+            return
+        print("HELLL")
+        docker_id = 0
+        os.system("docker rm -f {}".format(managerId))
+        url = create_container(db_uri,managerId,os.environ['DOCKER_IMG_MANAGER'],envs={
+            'IS_WRITE':'0'
+        }) 
+
+       
+        print("HELLL")
+        with app.app_context():
+            ################# DB UPDATES ########################
+            oldManagerObj.url = url
+            db.session.commit()
+            #####################################################
+
+        
+
+
     def removeBroker(cls,brokerUrl):
         pass#TODO
-
 
 
 
