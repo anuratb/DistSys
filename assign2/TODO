@@ -1,4 +1,5 @@
-1. All DB updates should be done at the end of addTopic (including Partition to broker mapping)
+
 2. Locks
 3. Logging
 4. Test Testing
+5. Remove ping

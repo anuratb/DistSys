@@ -142,6 +142,7 @@ def testp():
 app.app_context().push()
 
 Queue.clear()
+# db.drop_all()
 db.create_all()
 load_from_db()
 

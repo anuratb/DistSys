@@ -175,7 +175,7 @@ def enqueue():
     try:
         topicName: str = request.get_json().get('topic')
         partition = request.get_json().get("partition")
-        producer_id: int = request.get_json().get('producer_id')
+        producer_id = int(request.get_json().get('producer_id'))
         message: str = request.get_json().get('message')
         print(topicName,partition,producer_id,message)
         topic = str(partition) + '#' + topicName
@@ -216,7 +216,7 @@ def dequeue():
     try :
         topicName: str = request.args.get('topic', type=str)
         partition = request.args.get("partition")
-        consumer_id: int = request.args.get('consumer_id', type=int)
+        consumer_id:int= int(request.args.get('consumer_id', type=int))
         topic = str(partition) + '#' + topicName
 
         msg = Queue.dequeue(topic, consumer_id)

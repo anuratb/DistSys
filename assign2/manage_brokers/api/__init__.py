@@ -11,6 +11,9 @@ from sqlalchemy_utils.functions import database_exists
 from api.utils import *
 from flask_executor import Executor
 from apscheduler.schedulers.background import BackgroundScheduler
+
+APP_URL = "http://127.0.0.1:5124"
+
 dotenv_file = dotenv.find_dotenv()
 dotenv.load_dotenv(dotenv_file)
 
@@ -73,7 +76,7 @@ def create_app(test_config = None):
     return app, db
 
 app, db = create_app()
-executor = Executor(app)
+
 from api.data_struct  import TopicMetaData,ProducerMetaData,ConsumerMetaData,BrokerMetaData,Docker,Manager
 from api.models import ManagerDB,TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,DockerDB,localProducerDB,localConsumerDB
 
@@ -227,6 +230,7 @@ if os.environ['EXECUTE'] == '0':
             Manager.lock.acquire()
             Manager.brokers[broker_obj.brokerID] = broker_obj
             Manager.lock.release()
+
 
 # Comment below code to remove perodic heart beat checks
 from api import IsWriteManager
