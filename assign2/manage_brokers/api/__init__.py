@@ -12,6 +12,8 @@ from api.utils import *
 from flask_executor import Executor
 from apscheduler.schedulers.background import BackgroundScheduler
 
+APP_URL = "http://127.0.0.1:5124"
+
 dotenv_file = dotenv.find_dotenv()
 dotenv.load_dotenv(dotenv_file)
 

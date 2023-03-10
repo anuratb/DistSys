@@ -4,7 +4,7 @@ from api import app
 from api.data_struct import  Manager,Docker
 from api.models import TopicDB
 
-from api import db,random,DB_URI
+from api import db,random,DB_URI, APP_URL
 
 import requests
 from api import IsWriteManager, readManagerURL
@@ -156,8 +156,7 @@ def register_producer():
     try:
         if partition:
             brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-            #return redirect(brokerUrl + "/producer/register", 307)
-            return requests.post(brokerUrl + "/producer/register", json=request.get_json()).json()
+            return redirect(brokerUrl + "/producer/register", 307)
         else:
             # Subscribe to all partitions of a topic
             retID = Manager.registerClientForAllPartitions("/producer/register", topic, True)
@@ -225,7 +224,15 @@ def enqueue():
                     "partition":partition
                 }
             )
-            if(res.json().get("status") == "Success"):
+
+            if res.status_code != 200:
+                # Recover the broker
+                requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
+                return {
+                    "status": "Failure",
+                    "message": "Service currently unavailable. Try again later."
+                }
+            elif(res.json().get("status") == "Success"):
                 return {
                     "status": "Success",
                     "message": ""
@@ -235,18 +242,7 @@ def enqueue():
         else:
             partition = request.get_json().get('partition')
             brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-
-            obj = requests.post(
-                brokerUrl + "/producer/produce",
-                json = {
-                    "topic": topic,
-                    "producer_id": producer_id,
-                    "message":message,
-                    "partition":partition
-                }
-            ).json()
-
-            return  obj
+            return redirect(brokerUrl + "/producer/produce", 307)
      
     except Exception as e:
         return {
@@ -316,7 +312,14 @@ def dequeue():
                         "partition":partition
                     }
                 )
-                if(res.json().get("status") == "Success"):
+                if res.status_code != 200:
+                    # Recover the broker
+                    requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
+                    return {
+                        "status": "Failure",
+                        "message": "Service currently unavailable. Try again later."
+                    }
+                elif(res.json().get("status") == "Success"):
                     msg = res.json().get("message")
                     return {
                         "status": "Success",
@@ -327,11 +330,8 @@ def dequeue():
             else:
                 partition = request.args.get('partition')
                 brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-                return requests.get(brokerUrl + "/consumer/consume", params = {
-                        "topic": topic,
-                        "consumer_id": str(consumer_id),
-                        "partition":str(partition)
-                    }).json()
+                url_with_param = f"{brokerUrl}/consumer/consume?topic={topic}&consumer_id={consumer_id}&partition={partition}"
+                return redirect(url_with_param, 307)
 
     except Exception as e:
         return {
@@ -411,11 +411,8 @@ def crashRecovary():
     try:
         brokerID = int(request.args.get('brokerID'))
         executor.submit(Docker.restartBroker,  brokerID)
-        # Docker.restartBroker(brokerID)
-        print("success")
         return "success"
     except Exception as e:
-        print("failure")
         return str(e)
 
 
@@ -426,14 +423,14 @@ def job():
     while True: pass
     # return str(100)
 
-@app.route('/hello')
+@app.route('/hello', methods=["GET"])
 def hello():
     if IsWriteManager:
+        print("HELL1")
         brokerID = int(request.args.get('brokerID'))
         ind = int(random()*len(readManagerURL))
-        target_url = readManagerURL[ind] + "/hello"
-        url_with_param="{}?brokerID={}&ID=100".format(target_url, brokerID)
-        return redirect(url_with_param, 307) #redirect to read manager
+        return redirect(readManagerURL[ind] + "/hello", 307) #redirect to read manager
     else:
-        brokerID = int(request.args.get('ID'))
-        return "$$$" + str(brokerID)
+        print("HELL2")
+        brokerID = int(request.args.get('brokerID'))
+        return {'brokerID': "$$$" + str(brokerID)}

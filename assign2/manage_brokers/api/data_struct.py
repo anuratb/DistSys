@@ -5,7 +5,7 @@ import os, requests, time
 from api import random
 from api.models import TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB,DockerDB
 from sqlalchemy_utils.functions import database_exists
-from api import db_host,db_port,db_password,db_username,docker_img_broker
+from api import db_host,db_port,db_password,db_username,docker_img_broker, APP_URL
 import subprocess
 from api.utils import is_server_running
 import psycopg2
@@ -21,10 +21,6 @@ file = open('LOG_path.txt','w')
 
 
 
-
-
-
-BROKER_URL = "http://127.0.0.1:5124"
 
 class TopicMetaData:
 
@@ -283,9 +279,7 @@ class Manager:
 
             # Broker failure (TODO: what to do?)
             if res.status_code != 200:
-                # Restart the broker
-                # executor.submit(Docker.restartBroker, brokerID = brokerID)
-                pass
+                requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
             elif(res.json().get("status") == "Success"):
                 PartitionBroker[brokerTopicName] = brokerID
                 actualPartitions += 1    
@@ -319,9 +313,7 @@ class Manager:
 
             # TODO Broker Failure
             if res.status_code != 200:
-                # Restart the broker
-                # executor.submit(Docker.restartBroker, brokerID = brokerID)
-                pass
+                requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
             elif(res.json().get("status") != "Success"):
                 raise Exception(res.json().get("message"))
             else:
@@ -354,27 +346,14 @@ class Manager:
 
     @classmethod
     def checkBrokerHeartBeat(cls):
-        # requests.get("http://127.0.0.1:5123/crash_recovery", params = {'brokerID': str(cls.X)})
-        # cls.X += 1
-        # return
-        for key,broker in cls.brokers.items():
+        for _, broker in cls.brokers.items():
             val = is_server_running(broker.url)
             if val:
                 broker.lock.acquire()
                 broker.last_beat = time.monotonic()
                 broker.lock.release()
             else:
-                # Docker.restartBroker(key)
-                _ = requests.get("http://127.0.0.1:5124/crash_recovery", params = {'brokerID': str(broker.brokerID)})
-    
-    # @classmethod
-    # def crashRecovery(cls, brokerID):
-    #     print(brokerID)
-    #     executor.submit(cls.F)
-
-    # @classmethod
-    # def F(cls):
-    #     print("Hell")
+                requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(broker.brokerID)})
         
 
 class BrokerMetaData:
@@ -518,13 +497,5 @@ class Docker:
         pass#TODO
 
 
-'''
-class VM:
-    def __init__(self):
-        self.ids = []
-    #to return all vm ids
-    def get(self):
-        return self.ids
-'''
 
 
