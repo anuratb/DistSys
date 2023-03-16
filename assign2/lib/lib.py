@@ -33,6 +33,7 @@ class MyQueue:
 
         except Exception as err:
             return str(err)
+            
     def createTopic(self, topicName:str):
         try:
             
@@ -87,6 +88,7 @@ class MyQueue:
                 raise Exception(res.get("message"))
         except Exception as err:
             return str(err)
+
     def get_all_topics(self):
         try:
             loop = asyncio.get_event_loop()
