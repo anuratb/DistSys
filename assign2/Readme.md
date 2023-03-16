@@ -14,22 +14,22 @@
 
 ### Configuration
 - Set the environment variable in .env
-DB_USERNAME : Database Username
-DB_PASSWORD : Database PAssword
-DB_HOST : Database host for manager
-DB_PORT : Database port for manager
-DOCKER_IMG_BROKER : Broker Docker Image
-DOCKER_IMG_MANAGER : Manager Docker image
+- DB_USERNAME : Database Username
+- DB_PASSWORD : Database PAssword
+- DB_HOST : Database host for manager
+- DB_PORT : Database port for manager
+- DOCKER_IMG_BROKER : Broker Docker Image
+- DOCKER_IMG_MANAGER : Manager Docker image
 
-POSTGRES_CONTAINER : Manager DB container
-DB_NAME= Manager Database Name
-LOAD_FROM_DB : Set true to load from existing DB
-NUMBER_OF_BROKERS : Number of Brokers
-EXECUTE='0'
-NUMBER_READ_MANAGERS : Number of read managers
+- POSTGRES_CONTAINER : Manager DB container
+- DB_NAME= Manager Database Name
+- LOAD_FROM_DB : Set true to load from existing DB
+- NUMBER_OF_BROKERS : Number of Brokers
+- EXECUTE='0'
+- NUMBER_READ_MANAGERS : Number of read managers
 
-RANDOM_SEED=42
-HEART_BEAT_INTERVAL=0.1
+- RANDOM_SEED=42
+- HEART_BEAT_INTERVAL=0.1
 
 ### Run
 - Run the app from assgn1 directory: `python3 run.py` in manage_brokers
