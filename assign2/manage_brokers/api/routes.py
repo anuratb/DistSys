@@ -3,7 +3,7 @@ from flask import request, redirect
 from api import app
 from api.data_struct import  Manager,Docker
 from api.models import TopicDB
-
+import os
 from api import db,random,DB_URI, APP_URL
 
 import requests
@@ -398,12 +398,38 @@ def size():
 
 @app.route("/addbroker", methods=["POST","GET"])
 def addBroker():
-    return str(Docker.build_run('../../broker/'))
+    try:
+        broker_obj = Docker.build_run("../../broker")
+        #Manager.lock.acquire()
+        Manager.brokers[broker_obj.brokerID] = broker_obj
+        #Manager.lock.release()
+        return {
+            "status" : "Success" ,
+            "id": str(broker_obj.brokerID)
+        }
+    except Exception as e:
+        return {
+            "status" : "Failure" ,
+            "message" : str(e)
+        }
+    
 
 
 @app.route("/removebroker", methods=["POST"])
 def removeBroker():
-    return NotImplementedError()
+    #return NotImplementedError()
+    try:
+        brokerID = int(request.get_json().get('brokerID'))
+        del Manager.brokers[brokerID]
+        os.system(f"docker rm -f broker{brokerID}")
+        return {
+            "status" : "Success" 
+        }
+    except Exception as e:
+        return {
+            "status" : "Failure" ,
+            "message" : str(e)
+        }
 
 
 @app.route('/crash_recovery')
