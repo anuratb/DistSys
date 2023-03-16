@@ -32,4 +32,4 @@
 - HEART_BEAT_INTERVAL=0.1
 
 ### Run
-- Run the app from assgn1 directory: `python3 run.py` in manage_brokers
+- Run the app from assgn2 directory: `python3 run.py` in manage_brokers
