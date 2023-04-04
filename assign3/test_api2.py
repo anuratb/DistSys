@@ -4,6 +4,24 @@ import multiprocessing, threading
 import random, time, re
 
 PATH = "./test_asgn1"
+MAX = 2
+
+def enq(P, prod_msg, mod_val, prod_name):
+    for i in range(len(prod_msg)):
+        if i % MAX != mod_val: continue
+        topic, partition, msg = prod_msg[i]
+        while True:
+            time.sleep(random.random())
+            try:
+                ret = P.enqueue(msg, topic, partition)
+                if ret == 0:
+                    print(f"{prod_name}: SUCCESS: Enqueuing topic {topic}, partition {partition} with msg {msg}")
+                else:
+                    print(f"{prod_name}: FAILURE: Enqueuing topic {topic}, partition {partition} with msg {msg}: {ret}")
+                    continue
+                break
+            except:
+                continue
 
 def producer(url, prod_name, topics):
     print(f"Producer {prod_name} started...")
@@ -48,20 +66,11 @@ def producer(url, prod_name, topics):
                 topic = "T" + topic[2:3]
                 prod_msg.append((topic, topicMap[topic], msg))
 
-    for tup in prod_msg:
-        topic, partition, msg = tup
-        while True:
-            time.sleep(random.random())
-            try:
-                ret = P.enqueue(msg, topic, partition)
-                if ret == 0:
-                    print(f"{prod_name}: SUCCESS: Enqueuing topic {topic}, partition {partition} with msg {msg}")
-                else:
-                    print(f"{prod_name}: FAILURE: Enqueuing topic {topic}, partition {partition} with msg {msg}: {ret}")
-                    continue
-                break
-            except:
-                continue
+    proc_list = []
+    for i in range(MAX):
+        proc = multiprocessing.Process(target=enq, args=(P, prod_msg, MAX, prod_name + '#' + str(i)))
+        proc_list.append(proc)
+        proc.start()
         
 
     
