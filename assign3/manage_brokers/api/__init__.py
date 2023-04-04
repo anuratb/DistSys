@@ -227,9 +227,9 @@ if os.environ['EXECUTE'] == '0':
         for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
 
             broker_obj = Docker.build_run("../../broker")
-            Manager.lock.acquire()
+            #Manager.lock.acquire()
             Manager.brokers[broker_obj.brokerID] = broker_obj
-            Manager.lock.release()
+            #Manager.lock.release()
 
 
 # Comment below code to remove perodic heart beat checks

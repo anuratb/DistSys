@@ -1,1 +1,1 @@
-from lib import *
+from lib.lib_sync import *
