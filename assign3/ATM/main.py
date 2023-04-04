@@ -77,3 +77,64 @@ class Account(SyncObj):
     def getAllAccounts(self):
         print(f"## accountList: {self.accountList}")
         print(f"## Latest Account ID: {self.ID}")
+
+
+if __name__ == '__main__':
+    if len(sys.argv) < 3:
+        print('Usage: %s self_port partner1_port partner2_port ...' % sys.argv[0])
+        sys.exit(-1)
+
+    userMainPort = int(sys.argv[1])
+    accountMainPort = int(sys.argv[1]) + 1000
+    userPartners = ['localhost:%d' % int(p) for p in sys.argv[2:]]
+    accountPartners = ['localhost:%d' % (int(p) + 1000) for p in sys.argv[2:]]
+
+    user = User('localhost:%d' % userMainPort, userPartners)
+    account = Account('localhost:%d' % accountMainPort, accountPartners)
+
+    while True:
+        if user._getLeader() is None or account._getLeader() is None:
+            continue
+        print("\n===============================================")
+        print("Enter 1 to create Account")
+        print("Enter 2 for withdrawal")
+        print("Enter 3 for deposit")
+        print("Enter 4 for balance enquiry")
+        print("Enter 5 for transfering funds to other account")
+        print("===============================================\n")
+
+        ip = int(input("Enter your choice: "))
+        
+        if ip < 1 or ip > 5:
+            user.getUserList()
+            account.getAllAccounts()
+            print("## Error: Wrong choice entered...")
+        else:
+            userName = input("Enter user name: ")
+            if ip == 1:
+                accountNo = account.createAccount(sync=True)
+                user.addUser(userName, accountNo)
+                print(f"$$ Account created successfully. Your Account Number: {accountNo}")
+            else:
+                accountNo = input("Enter your account number: ")
+
+                if not user.checkValidity(userName, accountNo):
+                    print("## Error: User is not registered with account")
+                    continue
+
+                if ip == 2:
+                    amount = int(input("Enter withdrawal amount: "))
+                    resp = account.withDrawal(accountNo, amount, sync = True)
+                    print(resp)   
+                elif ip == 3:
+                    amount = int(input("Enter deposit amount: "))
+                    resp = account.deposit(accountNo, amount, sync = True)
+                    print(resp)
+                elif ip == 4:
+                    resp = account.balanceEnquiry(accountNo)
+                    print(f"$$ Current Balance: {resp}")
+                else:
+                    accountTo = input("Enter the account number for fund transfer: ")
+                    amount = int(input("Enter the amount to transfer: "))
+                    resp = account.fundTransfer(accountTo, accountNo, amount, sync = True)
+                    print(resp)
