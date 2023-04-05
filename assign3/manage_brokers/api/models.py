@@ -141,3 +141,23 @@ class ManagerDB(db.Model):
     id = db.Column(db.String,primary_key=True,nullable=False)
     url = db.Column(db.String,nullable=False)
     
+
+############################### Replication ##############################################
+
+replication_table = db.Table('user_group',
+                      db.Column('master_id', db.Integer, db.ForeignKey('ReplicationDB.id')),
+                      db.Column('slave_id', db.Integer, db.ForeignKey('ReplicationDB.id')))
+
+
+class ReplicationDB(db.Model):
+    id = db.Column(db.Integer,primary_key=True,nullable=False)
+    topic = db.Column(db.String,nullable=False)
+    partition = db.Column(db.Integer,nullable=False)
+    replicas = db.relationship(
+        'ReplicationDB',
+        secondary=replication_table,
+        primaryjoin=(replication_table.c.master_id == id),
+        secondaryjoin=(replication_table.c.slave_id == id),
+        backref=db.backref('replication',lazy='dynamic'),
+        lazy='dynamic')
+    

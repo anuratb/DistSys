@@ -12,7 +12,7 @@ import psycopg2
 
 from api.utils import *
 
-
+from pysyncobj import SyncObj,replicated
 
 
 LOG_path = './LOG.txt'
@@ -22,9 +22,11 @@ file = open('LOG_path.txt','w')
 
 
 
-class TopicMetaData:
+class TopicMetaData(SyncObj):
 
-    def __init__(self):
+    def __init__(self,selfNodeAddr, partnerNodeAddrs):
+        #sync
+        super(TopicMetaData, self).__init__(selfNodeAddr, partnerNodeAddrs)
         # Map from topicName to {topicID, numPartitions, rrindex, lock}
         self.Topics = {}
         # A map from partiton#topicName to the corresponding brokerID
@@ -35,6 +37,7 @@ class TopicMetaData:
 
 
     # Adds a topic and randomly decides number of paritions
+    @replicated
     def addTopic(self, topicName):
         # TODO get the current number of brokers numBrokers
         numBrokers = len(Manager.brokers)
@@ -98,14 +101,16 @@ class TopicMetaData:
                 raise Exception(f"Invalid partition for topic: {topicName}")
         return ret
 
+    @replicated
     def getBrokerID(self, subbedTopicName):
         return self.PartitionBroker[subbedTopicName]
 
     def getTopicsList(self):
         return self.Topics
 
-class ProducerMetaData:
-    def __init__(self, cnt = 0):
+class ProducerMetaData(SyncObj):
+    def __init__(self, cnt = 0, selfNodeAddr = None, partnerNodeAddrs = None):
+        super(ProducerMetaData, self).__init__(selfNodeAddr, partnerNodeAddrs)
         # Only stores those clients that subscribe to enitre topic
         # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
         # corresponding (prodIDs, partitionNo)
@@ -115,7 +120,7 @@ class ProducerMetaData:
         self.clientCnt = cnt
         self.subscriptionLock = threading.Lock()
         self.rrIndexLock = {}
-
+    @replicated
     def addSubscription(self, clientIDs, topicName):
         self.subscriptionLock.acquire()
         clientID = "$" + str(self.clientCnt)
@@ -176,8 +181,9 @@ class ProducerMetaData:
         return brokerID, prodID, partition
 
 
-class ConsumerMetaData:
-    def __init__(self, cnt = 0):
+class ConsumerMetaData(SyncObj):
+    def __init__(self, cnt = 0, selfNodeAddr = None, partnerNodeAddrs = None):
+        super(ConsumerMetaData, self).__init__(selfNodeAddr, partnerNodeAddrs)
         # Only stores those clients that subscribe to enitre topic
         # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
         # corresponding (conIDs, partitionNo)
@@ -188,6 +194,7 @@ class ConsumerMetaData:
         self.subscriptionLock = threading.Lock()
         self.rrIndexLock = {}
 
+    @replicated 
     def addSubscription(self, clientIDs, topicName):
         self.subscriptionLock.acquire()
         clientID = "$" + str(self.clientCnt)
@@ -243,7 +250,8 @@ class ConsumerMetaData:
         return brokerID, ConsID,partition
 
 
-class Manager:
+class Manager(SyncObj):
+    
     topicMetaData = TopicMetaData()
     consumerMetaData = ConsumerMetaData()
     producerMetaData = ProducerMetaData()
@@ -251,8 +259,11 @@ class Manager:
     # A map from broker ID to broker Metadata
     brokers = {}
     X = 0
-
+    #TODO : Need to check if this will work
+    def __init__(self, selfNodeAddr = None, partnerNodeAddrs = None):
+        super(Manager, self).__init__(selfNodeAddr, partnerNodeAddrs)
     @classmethod
+    @replicated
     def assignBrokers(cls, topicName, numPartitions):
         PartitionBroker = {}
         brokerIDs = list(cls.brokers.keys())
@@ -293,6 +304,7 @@ class Manager:
 
 
     @classmethod
+    @replicated
     def registerClientForAllPartitions(cls, url, topicName, isProducer):
         if topicName not in Manager.topicMetaData.Topics.keys():
             raise Exception(f"Topic {topicName} doesn't exist")
@@ -344,7 +356,7 @@ class Manager:
         return BrokerMetaDataDB.query.filter_by(broker_id = brokerID).first().url
         #return cls.brokers[brokerID].url
 
-    @classmethod
+    @classmethod    
     def checkBrokerHeartBeat(cls):
         for _, broker in cls.brokers.items():
             val = is_server_running(broker.url)
@@ -374,13 +386,14 @@ class BrokerMetaData:
         self.docker_id = docker_id
         self.lock = threading.Lock()
 
-class Docker:
+class Docker(SyncObj):
     
     cnt = 0
     # Maps Docker Name to Broker Object --> Not needed
     #self.id ={}
     lock = threading.Lock()
-
+    def __init__(self, selfNodeAddr = None, partnerNodeAddrs = None):
+        super(Docker, self).__init__(selfNodeAddr, partnerNodeAddrs)
     @classmethod
     def build_run(cls, path:str):
         cls.lock.acquire()
@@ -432,9 +445,9 @@ class Docker:
         docker_id = 0
         print("broker"+str(curr_id),db_uri,docker_img_broker)
         os.system("docker rm -f broker"+str(curr_id))
-        cmd = "docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  --rm {}".format("broker"+str(curr_id),db_uri,docker_img_broker)
+        cmd = "docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}   {}".format("broker"+str(curr_id),db_uri,docker_img_broker)
         os.system(cmd)
-        print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
+        print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
         url = 'http://' + obj.decode('utf-8').strip() + ':5124'
         print(url)
@@ -464,8 +477,10 @@ class Docker:
         #####################################################
         return broker_obj
 
+  
     @classmethod
     def restartBroker(cls, brokerId):
+        #return NotImplementedError()
         # TODO Ping the broker before creating one
         print("HELLL")
         oldBrokerObj:BrokerMetaData = Manager.brokers[brokerId]

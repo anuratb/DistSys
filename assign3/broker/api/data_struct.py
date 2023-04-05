@@ -1,6 +1,7 @@
 import threading
 from api import db
 from api.models import QueueDB,Topics,Producer,Consumer
+from pysyncobj import SyncObj,replicated
 class TopicNode:
     
     def __init__(self, topicID_):
@@ -17,7 +18,10 @@ class TopicNode:
         self.consumerList.append(consumerID_)
 
 
-class Queue:
+class Queue(SyncObj):
+    def __init__(self, selfAddr, otherAddrs, db):
+        super().__init__(selfAddr, otherAddrs)
+        
     glob_lck = threading.Lock()
     # topic-wise message queues
     # Key: TopicID, Value: An array of messages
@@ -37,6 +41,7 @@ class Queue:
     cntMessage = 0
 
     @classmethod
+    @replicated
     def clear(cls):
         cls.glob_lck = threading.Lock()
         cls.cntConsLock = threading.Lock()
@@ -54,6 +59,7 @@ class Queue:
         cls.cntProd = 0
 
     @classmethod
+    @replicated
     def createTopic(cls, topicName):
         #print("---->"+str(topicName))
         if topicName in cls.topics.keys():
@@ -78,6 +84,7 @@ class Queue:
         return cls.topics
 
     @classmethod
+    @replicated
     def registerConsumer(cls, topicName):
         if topicName not in cls.topics.keys():
             raise Exception('Topicname: {} does not exists'.format(topicName))
@@ -105,6 +112,7 @@ class Queue:
         return nid
             
     @classmethod
+    @replicated
     def registerProducer(cls, topicName):
         #print("registering"+ topicName)
         if topicName not in cls.topics.keys():
@@ -131,6 +139,7 @@ class Queue:
         return nid
 
     @classmethod
+    @replicated
     def enqueue(cls, topicName, prodID, msg):
         
         #print("Enqueueing: ", topicName, prodID, msg)
@@ -180,6 +189,7 @@ class Queue:
 
 
     @classmethod
+    @replicated
     def dequeue(cls, topicName, conID):
         # Check if topic exists
         try:

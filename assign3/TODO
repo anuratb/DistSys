@@ -3,3 +3,12 @@
 3. Logging
 4. Test Testing
 5. Remove ping
+---------------------------
+Assign3
+- Change the central database
+- Modify both manager and broker with Pysync object
+- Write code for initialisation
+- see if server recovery is working
+- Change db updates in routes.py to class methods with replicated tag
+- Add functions for db updates with replicated tag in Docker class without the need to restart the docker each time
+- Pass appropriate environment variables in the Broker dockers to initialize replication

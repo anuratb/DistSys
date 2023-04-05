@@ -203,7 +203,7 @@ def enqueue():
             #Manager.topicMetaData.Topics[topic][3].acquire()
             #rrIndex = Manager.topicMetaData.Topics[topic][2]
             #Manager.topicMetaData.Topics[topic][2] += 1
-
+            #TODO sync
             ###################### DB Update ############################
             obj = TopicDB.query.filter_by(topicName=topic).first()
             rrIndex = obj.rrindex
@@ -283,6 +283,7 @@ def dequeue():
             
             #Manager.topicMetaData.Topics[topic][2] += 1
             #Manager.topicMetaData.Topics[topic][3].release()
+            #TODO sync
             ###################### DB Update ############################
             rrIndex = TopicDB.query.filter_by(topicName = topic).first().rrindex
             TopicDB.query.filter_by(topicName = topic).first().rrindex = rrIndex + 1
@@ -417,6 +418,7 @@ def addBroker():
 
 @app.route("/removebroker", methods=["POST"])
 def removeBroker():
+    #TODO assgn3
     #return NotImplementedError()
     try:
         brokerID = int(request.get_json().get('brokerID'))
