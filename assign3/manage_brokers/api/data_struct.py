@@ -2,8 +2,8 @@ import threading
 from . import db,app
 import json
 import os, requests, time
-from api import random,DB_URI
-from api.models import ManagerDB, TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB,DockerDB
+from api import random,DB_URI,replFactor
+from api.models import ManagerDB,ReplicationDB, TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB,DockerDB
 from sqlalchemy_utils.functions import database_exists
 from api import db_host,db_port,db_password,db_username,docker_img_broker, APP_URL
 import subprocess
@@ -263,37 +263,59 @@ class Manager(SyncObj):
     def __init__(self, selfNodeAddr = None, partnerNodeAddrs = None):
         super(Manager, self).__init__(selfNodeAddr, partnerNodeAddrs)
     @classmethod
-    @replicated
     def assignBrokers(cls, topicName, numPartitions):
         PartitionBroker = {}
         brokerIDs = list(cls.brokers.keys())
         l = len(brokerIDs)
         brokerList = []
-        for i in range(numPartitions):
+        for i in range(numPartitions*replFactor):
             brokerList.append(brokerIDs[int(random() * l)])
 
         actualPartitions = 0
 
         for i in range(numPartitions):
-            # TODO assign the broker url
-            brokerID = brokerList[i]
-            brokerTopicName = str(actualPartitions + 1) + '#' + topicName
+            all_addrs = []
+            objs= []
+            for j in range(replFactor):
+                # TODO assign the broker url
+                brokerID = brokerList[i*replFactor+j]
+                brokerTopicName = str(actualPartitions + 1) + '#' + topicName
+                url = cls.brokers[brokerID].url.split(":")[0]+":"+str(cls.broker[brokerID].port_cnt)
+                cls.broker[brokerID].port_cnt += 1
+                BrokerMetaDataDB.query.filter_by(broker_id=brokerID).update({"port_cnt":cls.broker[brokerID].port_cnt})
+                all_addrs.append(url)
+                obj = ReplicationDB(
+                    replica_id=j,
+                    topic=topicName,
+                    partition=i,
+                    url=url
+                )
+                objs.append(obj)
+                #url = cls.brokers[brokerID].url
+            for j in range(replFactor):
+                for k in range(replFactor):
+                    if j != k:
+                        objs[j].replicas.append(objs[k])
+                master = all_addrs[j]
+                slave = all_addrs[:j] + all_addrs[j+1:]
+                res = requests.post(str(url) + "/topics", 
+                    json = {
+                        "name": brokerTopicName,
+                        "master":master,
+                        "slave":slave
+                    }
+                )
 
-            url = cls.brokers[brokerID].url
-            res = requests.post(str(url) + "/topics", 
-                json = {
-                    "name": brokerTopicName
-                }
-            )
+                # Post request to the broker to create the topic
 
-            # Post request to the broker to create the topic
-
-            # Broker failure (TODO: what to do?)
-            if res.status_code != 200:
-                requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
-            elif(res.json().get("status") == "Success"):
-                PartitionBroker[brokerTopicName] = brokerID
-                actualPartitions += 1    
+                # Broker failure (TODO: what to do?)
+                if res.status_code != 200:
+                    requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
+                elif(res.json().get("status") == "Success"):
+                    PartitionBroker[brokerTopicName] = brokerID
+                    actualPartitions += 1  
+            db.session.add_all(objs)
+        db.session.commit()  
         return actualPartitions, PartitionBroker
 
     @classmethod
@@ -385,6 +407,7 @@ class BrokerMetaData:
         self.brokerID = brokerID
         self.docker_id = docker_id
         self.lock = threading.Lock()
+        self.port = 8000#initial port for raft
 
 class Docker(SyncObj):
     

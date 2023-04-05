@@ -1,0 +1,2 @@
+Not adding database entry for currnt raft port as these are created during the first time when the brokers are created
+And not used henceforth
