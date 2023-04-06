@@ -151,8 +151,10 @@ replication_table = db.Table('user_group',
 
 class ReplicationDB(db.Model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)
+    replica_id = db.Column(db.Integer,primary_key=True,nullable=False)#replica id
     topic = db.Column(db.String,nullable=False)
     partition = db.Column(db.Integer,nullable=False)
+    url = db.Column(db.String,nullable=False)
     replicas = db.relationship(
         'ReplicationDB',
         secondary=replication_table,

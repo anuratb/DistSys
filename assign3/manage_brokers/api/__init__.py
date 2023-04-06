@@ -34,6 +34,8 @@ cntManager = 0
 # cntManager = len(ManagerDB.query.all())
 readManagerURL = []
 
+replFactor = int(os.environ['REPLICATION_FACTOR'])
+
 ###########################################################################
 
 
