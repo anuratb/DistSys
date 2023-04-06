@@ -41,14 +41,25 @@ class Counter(SyncObj):
     def incr(self):
         self.cnt+=1
 
+obj = None
 
 @app.route("/counter",methods=["GET"])
 def counter():
+    global obj
     master = request.get_json().get("master")
     slave = request.get_json().get("slave")
+    print(master,slave)
     obj = Counter(master,slave)
+    #obj.incr()
+    #print(f"Output: {obj.cnt}")
+    return "Success"
+@app.route("/incr",methods=["GET"])
+def incr():
     obj.incr()
-    print(f"Output: {obj.cnt}")
+    return "Success"
+@app.route("/getval",methods=["GET"])
+def getval():
+    return str(obj.cnt)
 
 
 @ app.route("/topics", methods=[ 'GET','POST'])
