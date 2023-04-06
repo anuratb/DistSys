@@ -50,6 +50,9 @@ def counter():
     slave = request.get_json().get("slave")
     print(master,slave)
     obj = Counter(master,slave)
+    while obj._getLeader() is None :
+        continue
+        
     #obj.incr()
     #print(f"Output: {obj.cnt}")
     return "Success"
