@@ -6,32 +6,28 @@ import time
 from functools import partial
 sys.path.append("../")
 from pysyncobj import SyncObj, replicated
+import threading
+import multiprocessing
+from pysyncobj.batteries import ReplLockManager
 
-user = None
-account = None
 
 class User(SyncObj):
 
     def __init__(self, selfNodeAddr, otherNodeAddrs):
         super(User, self).__init__(selfNodeAddr, otherNodeAddrs)
         # UserName -> List of Accounts
-        self.userList = {}
-
+        self.counter = 0
+        self.lock = threading.Lock()
+        
     @replicated
-    def addUser(self, userName, accountNo):
-        if userName not in self.userList:
-            self.userList[userName] = []
-        self.userList[userName].append(accountNo)
+    def incCounter(self):
+        old = self.counter
+        self.counter += 1
+        return old
+
     
-    def checkValidity(self, userName, accountNo):
-        if userName not in self.userList.keys():
-            return False
-        if accountNo not in self.userList[userName]:
-            return False
-        return True
-    
-    def getUserList(self):
-        print(f"## userList: {self.userList}")
+    def getCounter(self):
+        return self.counter
 
     
 class Account(SyncObj):
@@ -39,44 +35,16 @@ class Account(SyncObj):
     def __init__(self, selfNodeAddr, otherNodeAddrs):
         super(Account, self).__init__(selfNodeAddr, otherNodeAddrs)
         # AccountNo -> Balance
-        self.accountList = {}
         self.ID = 0
 
     @replicated
     def createAccount(self):
-        ID_ = str(self.ID)
         self.ID += 1
-        self.accountList[ID_] = 0
-        return ID_
+        user.incCounter(self.ID)
 
-    @replicated
-    def withDrawal(self, accountNo, amount):
-        if amount > self.accountList[accountNo]:
-            return "## Error: Not enough Balance!"
-        self.accountList[accountNo] -= amount
-        return f"$$ Updated balance: {self.accountList[accountNo]}"
-    
-    @replicated
-    def deposit(self, accountNo, amount):
-        self.accountList[accountNo] += amount
-        return f"$$ Updated balance: {self.accountList[accountNo]}"
+    def getID(self):
+        return self.ID
 
-    @replicated
-    def fundTransfer(self, accountTo, accountFrom, amount):
-        if accountTo not in self.accountList:
-            return f"## Error: Account Number {accountTo} doesn't exist"
-        if amount > self.accountList[accountFrom]:
-            return "## Error: Not enough Balance!"
-        self.accountList[accountFrom] -= amount
-        self.accountList[accountTo] += amount
-        return f"$$ Transfer successful. Updated Balance: {self.accountList[accountFrom]}"
-
-    def balanceEnquiry(self, accountNo):
-        return self.accountList[accountNo]
-
-    def getAllAccounts(self):
-        print(f"## accountList: {self.accountList}")
-        print(f"## Latest Account ID: {self.ID}")
 
 
 if __name__ == '__main__':
@@ -90,51 +58,31 @@ if __name__ == '__main__':
     accountPartners = ['localhost:%d' % (int(p) + 1000) for p in sys.argv[2:]]
 
     user = User('localhost:%d' % userMainPort, userPartners)
-    account = Account('localhost:%d' % accountMainPort, accountPartners)
 
+    lockManager = ReplLockManager(autoUnlockTime=75) # Lock will be released if connection dropped for more than 75 seconds
+    syncObj = SyncObj('localhost:%d' % accountMainPort, accountPartners, consumers=[lockManager])
+    
     while True:
-        if user._getLeader() is None or account._getLeader() is None:
-            continue
-        print("\n===============================================")
-        print("Enter 1 to create Account")
-        print("Enter 2 for withdrawal")
-        print("Enter 3 for deposit")
-        print("Enter 4 for balance enquiry")
-        print("Enter 5 for transfering funds to other account")
-        print("===============================================\n")
-
-        ip = int(input("Enter your choice: "))
+        X = 0
+        if user._getLeader() is None:
+            print("user is None")
+            X = 1
+        if syncObj._getLeader() is None:
+            print("Lock is None")
+            X = 1
         
-        if ip < 1 or ip > 5:
-            user.getUserList()
-            account.getAllAccounts()
-            print("## Error: Wrong choice entered...")
+        if X:
+            time.sleep(1)
+            continue
+
+        ip = int(input("Enter: "))
+        if ip == 0:
+            if lockManager.tryAcquire('testLockName3', sync=True):
+                # do some actions
+                print("Before incCounter:")
+                val = user.incCounter(sync = True)
+                print(f"New counter: {val}")
+                # lockManager.release('testLockName')
         else:
-            userName = input("Enter user name: ")
-            if ip == 1:
-                accountNo = account.createAccount(sync=True)
-                user.addUser(userName, accountNo)
-                print(f"$$ Account created successfully. Your Account Number: {accountNo}")
-            else:
-                accountNo = input("Enter your account number: ")
-
-                if not user.checkValidity(userName, accountNo):
-                    print("## Error: User is not registered with account")
-                    continue
-
-                if ip == 2:
-                    amount = int(input("Enter withdrawal amount: "))
-                    resp = account.withDrawal(accountNo, amount, sync = True)
-                    print(resp)   
-                elif ip == 3:
-                    amount = int(input("Enter deposit amount: "))
-                    resp = account.deposit(accountNo, amount, sync = True)
-                    print(resp)
-                elif ip == 4:
-                    resp = account.balanceEnquiry(accountNo)
-                    print(f"$$ Current Balance: {resp}")
-                else:
-                    accountTo = input("Enter the account number for fund transfer: ")
-                    amount = int(input("Enter the amount to transfer: "))
-                    resp = account.fundTransfer(accountTo, accountNo, amount, sync = True)
-                    print(resp)
+            print(f"GetCounter: {user.getCounter()}")
+        

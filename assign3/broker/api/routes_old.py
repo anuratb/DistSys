@@ -1,7 +1,7 @@
 
 from flask import request
 from api import app
-from api.data_struct import QueueList
+from api.data_struct import Queue, QueueList, TopicList
 
 '''
     a. CreateTopic
@@ -29,12 +29,10 @@ def create_topic():
     topic_name : str = request.get_json().get('name') 
     selfAddr = request.get_json().get('master') 
     otherAddrs = request.get_json().get('slave')
-    isMainReplica = request.get_json().get('isMainReplica')
 
     try :
-        QueueList.createTopic(selfAddr, otherAddrs, topic_name)
-        if isMainReplica:
-            QueueList.addTopic(topic_name)
+        TopicList.addTopic(selfAddr, otherAddrs, topic_name)
+        QueueList.addQueue(selfAddr, otherAddrs, topic_name)
 
         return {
             "status" : "Success" , 
@@ -226,7 +224,7 @@ def dequeue():
         consumer_id:int= int(request.args.get('consumer_id', type=int))
         topic = str(partition) + '#' + topicName
 
-        msg = QueueList.dequeue(topic, consumer_id)
+        msg = Queue.dequeue(topic, consumer_id)
         return {
             "status": "Success",
             "message": msg

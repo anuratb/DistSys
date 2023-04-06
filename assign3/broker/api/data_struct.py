@@ -1,234 +1,290 @@
 import threading
 from api import db
 from api.models import QueueDB,Topics,Producer,Consumer
-from pysyncobj import SyncObj,replicated
-class TopicNode:
-    
-    def __init__(self, topicID_):
+from pysyncobj import SyncObj, replicated
+from pysyncobj.batteries import ReplLockManager
+
+lockManager = ReplLockManager(autoUnlockTime = 75) # Lock will be released if connection dropped for more than 75 seconds
+syncObj = None
+idSet = None
+
+CONLOCK = 'conlock'
+PRODLOCK = 'prodlock'
+MSGLOCK = 'msglock'
+TOPICLOCK = 'topiclock'
+
+class IDSet:
+    def __init__(self, selfAddr, otherAddrs, condID_ = 0, prodID_ = 0, msgID_ = 0, topicID_ = 0):
+        super().__init__(selfAddr, otherAddrs)
+        self.conID = condID_
+        self.prodID = prodID_
+        self.msgID = msgID_
         self.topicID = topicID_
+    
+    @replicated
+    def getNxtConID(self):
+        val = self.conID
+        self.conID += 1
+        return val
+
+    @replicated
+    def getNxtProdID(self):
+        val = self.prodID
+        self.prodID += 1
+        return val
+    
+    @replicated
+    def getNxtMsgID(self):
+        val = self.msgID
+        self.msgID += 1
+        return val
+    
+    @replicated
+    def getNxtTopicID(self):
+        val = self.topicID
+        self.topicID += 1
+        return val
+
+def createSyncObj(selfAddr, otherAddrs):
+    global syncObj
+    syncObj = SyncObj('localhost:%d' % selfAddr, otherAddrs, consumers = [lockManager])
+
+def createIDSet(selfAddr, otherAddrs, condID_ = 0, prodID_ = 0, msgID_ = 0, topicID_ = 0):
+    global idSet
+    idSet = IDSet('localhost:%d' % selfAddr, otherAddrs, condID_, prodID_, msgID_, topicID_)
+
+
+class Queue(SyncObj):
+    def __init__(self, selfAddr, otherAddrs):
+        super().__init__(selfAddr, otherAddrs)
+        self.queue = []
+        # Key: Consumer ID, Value: (offset in the topic queue, Lock)
+        self.Offset = {}
+        self.topicID = None
         self.producerList = [] # List of subscribed producers
         self.plock = threading.Lock() # Lock for producerList
         self.consumerList = [] # List of subscribed consumers
         self.clock = threading.Lock() # Lock for consumerList
-        
-    def subscribeProducer(self, producerID_):
-        self.producerList.append(producerID_)
-    
-    def subscribeConsumer(self, consumerID_):
-        self.consumerList.append(consumerID_)
 
-
-class Queue(SyncObj):
-    def __init__(self, selfAddr, otherAddrs, db):
-        super().__init__(selfAddr, otherAddrs)
-        
-    glob_lck = threading.Lock()
-    # topic-wise message queues
-    # Key: TopicID, Value: An array of messages
-    queue = {}
-    # Topic-wise locks
-    # Key: TopicID, Value: lock
-    locks = {}
-    # Key: topicname, Value: TopicNode
-    topics = {}
-    # Key: Consumer ID, Value: {offset in the topic queue, lock}
-    consumers = {}
-    cntConsLock = threading.Lock()
-    cntCons = 0
-    cntProdLock = threading.Lock()
-    cntProd = 0
-    cntMessageLock = threading.Lock()
-    cntMessage = 0
-
-    @classmethod
     @replicated
-    def clear(cls):
-        cls.glob_lck = threading.Lock()
-        cls.cntConsLock = threading.Lock()
-        cls.cntProdLock = threading.Lock()
-        cls.queue = {}
-        # Topic-wise locks
-        # Key: TopicID, Value: lock
-        cls.locks = {}
-        # Key: topicname, Value: TopicNode
-        cls.topics = {}
-        # Key: Consumer ID, Value: {offset in the topic queue, lock}
-        cls.consumers = {}
-        cls.cntCons = 0
-        cls.cntMessage = 0
-        cls.cntProd = 0
-
-    @classmethod
-    @replicated
-    def createTopic(cls, topicName):
-        #print("---->"+str(topicName))
-        if topicName in cls.topics.keys():
-            raise Exception('Topicname: {} already exists'.format(topicName))
-        cls.glob_lck.acquire()
-        nid  = len(cls.topics)
-        cls.queue[nid] = []
-        cls.locks[nid] = threading.Lock()
-        cls.topics[topicName] = TopicNode(nid)
-        #db updates
-        #nid =4 ,topicName="News"
-        
-        "db.session.add(Topics(id=4,value=News))"
-        print("db.session.add(Topics(id={},value={}))".format(nid,topicName))
-        db.session.add(Topics(id=nid,value=topicName))
-        #----------
+    def setTopic(self, topicID_, topicName_):
+        # TODO: check if the data is already in database
+        db.session.add(Topics(id = topicID_, value = topicName_))
         db.session.commit()
-        cls.glob_lck.release()
+        self.topicID = topicID_
+        self.topicName = topicName_
 
-    @classmethod
-    def listTopics(cls):
-        return cls.topics
+    @replicated  
+    def subscribeProducer(self, prodID):
+        self.producerList.append(prodID)
 
-    @classmethod
-    @replicated
-    def registerConsumer(cls, topicName):
-        if topicName not in cls.topics.keys():
-            raise Exception('Topicname: {} does not exists'.format(topicName))
-
-        cls.cntConsLock.acquire()
-        nid = cls.cntCons
-        cls.cntCons += 1
-        cls.cntConsLock.release()
-
-        topic = cls.topics[topicName]
-        clock = topic.clock
-
-        clock.acquire()
-        topic.consumerList.append(nid)
-        cls.consumers[nid] = [0, threading.Lock()]
-
-        #db updates
-        obj = Consumer(id=nid, offset=0)
-        cur = Topics.query.filter_by(id=topic.topicID).first()
-        cur.consumers.append(obj)
-        db.session.add(obj)
-        db.session.commit()
-        clock.release()
-
-        return nid
-            
-    @classmethod
-    @replicated
-    def registerProducer(cls, topicName):
-        #print("registering"+ topicName)
-        if topicName not in cls.topics.keys():
-            cls.createTopic(topicName)
-        
-        cls.cntProdLock.acquire()
-        nid = cls.cntProd
-        cls.cntProd += 1
-        cls.cntProdLock.release()
-
-        topic = cls.topics[topicName]
-        plock = topic.plock
-
-        plock.acquire()
-        topic.producerList.append(nid)
-        #db updates
-        obj = Producer(id=nid)
-        cur = Topics.query.filter_by(id=topic.topicID).first()
+        # TODO: check if the data is already in database
+        obj = Producer(id = prodID)
+        cur = Topics.query.filter_by(id = self.topicID).first()
         cur.producers.append(obj)
         db.session.add(obj)
         db.session.commit()
-        plock.release()
+
+    @replicated
+    def subscribeConsumer(self, conID):
+        self.consumerList.append(conID)
+
+        # TODO: check if the data is already in database
+        obj = Consumer(id = conID, offset = 0)
+        cur = Topics.query.filter_by(id = self.topicID).first()
+        cur.consumers.append(obj)
+        db.session.add(obj)
+        db.session.commit()
+
+    @replicated
+    def addOffset(self, conID):
+        self.Offset[conID] = [0, threading.Lock()]
+
+    @replicated
+    def getUpdOffset(self, conID):
+        offset = self.Offset[conID][0]
+        if offset < len(self.queue):
+            self.Offset[conID][0] += 1
+            # TODO: check if the data is already in database
+            obj = Consumer.query.filter_by(id = conID).first()
+            obj.offset += 1
+            db.session.commit()
+        else:
+            offset = -1
+        return offset
+
+    @replicated
+    def addMessage(self, nid, msg):
+        prev_id = None
+        if len(self.queue):
+            prev_id = self.queue[-1][0]
+        self.queue.append([nid, msg])
+        
+        # TODO: check if the data is already in database
+        obj = QueueDB(id = nid,value = msg)
+        db.session.add(obj)
+        topic = Topics.query.filter_by(id = self.topicID).first()
+        if prev_id is None:
+            topic.start_ind = nid  
+        else:
+            prevMsg = QueueDB.query.filter_by(id = prev_id).first()
+            prevMsg.nxt_id = nid
+        topic.end_ind = nid
+        db.session.commit()
+
+    def getTopicID(self):
+        return self.topicID
+
+    def getTopicName(self):
+        return self.topicName
+
+    def isConRegistered(self, conID):
+        if conID in self.consumerList:
+            return True
+        else:
+            return False
+    
+    def isProdRegistered(self, prodID):
+        if prodID in self.producerList:
+            return True
+        else:
+            return False
+
+    def getMessage(self, offset):
+        return self.queue[offset][1]
+
+    def getRemainingSize(self, conID):
+        return len(self.queue) - self.Offset[conID][0]
+
+class QueueList:
+    # topicName -> Queue
+    QList = {}
+    # topicName -> Lock
+    QLock = {}
+    # ConsumerID -> Lock
+    offsetLock = {}
+        
+    @classmethod
+    def createTopic(cls, selfAddr, otherAddrs, topicName):
+        node = Queue(selfAddr, otherAddrs)
+        cls.QList[topicName] = node
+        cls.QLock[topicName] = threading.Lock()
+
+    @classmethod
+    def addTopic(cls, topicName, topicID = None):
+        while not lockManager.tryAcquire(TOPICLOCK, sync = True):
+            continue
+        topicID = idSet.getNxtTopicID(sync = True)
+        lockManager.release(TOPICLOCK)
+
+        cls.QList[topicName].setTopic(topicID, topicName, sync = True)
+        return topicID
+
+    @classmethod
+    def listTopics(cls):
+        return [topicName for topicName in cls.QList.keys()]
+
+    @classmethod
+    def isValidTopic(cls, topicName):
+        if topicName in cls.QList:
+            return True
+        else:
+            return False
+
+    @classmethod
+    def addConsumer(cls, topicName, conID):
+        cls.QLock[topicName].acquire()
+        cls.QList[topicName].subscribeConsumer(conID, sync = True)
+        cls.QLock[topicName].release()
+
+
+    @classmethod
+    def addProducer(cls, topicName, prodID):
+        cls.QLock[topicName].acquire()
+        cls.QList[topicName].subscribeProducer(prodID, sync = True)
+        cls.QLock[topicName].release()
+
+    @classmethod
+    def registerConsumer(cls, topicName):
+        if not cls.isValidTopic(topicName):
+            raise Exception('Topicname: {} does not exists'.format(topicName))
+
+        while not lockManager.tryAcquire(CONLOCK, sync = True):
+            continue
+        nid = idSet.getNxtConID(sync = True)
+        lockManager.release(CONLOCK)
+
+        cls.addConsumer(topicName, nid)
+        cls.QList[topicName].addOffset(nid, sync = True)
 
         return nid
 
     @classmethod
-    @replicated
+    def registerProducer(cls, topicName):
+        if not cls.isValidTopic(topicName):
+            raise Exception('Topicname: {} does not exists'.format(topicName))
+        
+        while not lockManager.tryAcquire(PRODLOCK, sync = True):
+            continue
+        nid = idSet.getNxtProdID(sync = True)
+        lockManager.release(PRODLOCK)
+
+        cls.addProducer(topicName, nid)
+
+        return nid
+
+    @classmethod
     def enqueue(cls, topicName, prodID, msg):
         
         #print("Enqueueing: ", topicName, prodID, msg)
         #print(cls.topics.get(topicName).producerList)
       
         # Check if topic exists
-        try:
-            topicID = cls.topics[topicName].topicID
-        except Exception as _:
-            raise Exception("Error: No such topic exists!")
+        if not cls.isValidTopic(topicName):
+            raise Exception('Topicname: {} does not exists'.format(topicName))
+
         #print("----------------------")
         # Check if user is registered for the topic
-        if int(prodID) not in cls.topics.get(topicName).producerList:
-            print(prodID, cls.topics.get(topicName).producerList)
+        
+        if not cls.QList[topicName].isProdRegistered(prodID):
             raise Exception("Error: Invalid producer ID!")
-        #print("----------------------")
-        # Get the lock for the queue with topicName
-        lock = cls.locks[topicID]
-        cls.glob_lck.acquire()
-        nid = cls.cntMessage
-        cls.cntMessage+=1
-        cls.glob_lck.release()
-        prev_id = None
-        lock.acquire()
-        if(len(cls.queue[topicID])>0): prev_id = cls.queue[topicID][-1][0]
-        cls.queue[topicID].append([nid,msg])
-        print("----------------------")
-        #print(prev_id,cls.queue[topicID])
-        #DB updates
-        if(prev_id is None):
-            obj = QueueDB(id = nid,value=msg)
-            db.session.add(obj)
-            topic = Topics.query.filter_by(id=topicID).first()
-            topic.start_ind = nid
-            topic.end_ind = nid
-            db.session.commit()
-            
-        else:
-            obj = QueueDB(id = nid,value=msg)
-            db.session.add(obj)
-            topic = Topics.query.filter_by(id=topicID).first()
-            prevMsg = QueueDB.query.filter_by(id=prev_id).first()
-            prevMsg.nxt_id = nid
-            topic.end_ind = nid
-            db.session.commit()
-        lock.release()
 
+        while not lockManager.tryAcquire(MSGLOCK, sync = True):
+            continue
+        nid = idSet.getNxtMsgID(sync = True)
+        lockManager.release(MSGLOCK)
+
+        cls.QLock[topicName].acquire()
+        cls.QList[topicName].addMessage(nid, msg, sync = True)
+        cls.QLock[topicName].release()
 
     @classmethod
-    @replicated
     def dequeue(cls, topicName, conID):
         # Check if topic exists
-        try:
-            topicID = cls.topics[topicName].topicID
-        except Exception as _:
-            raise Exception("Error: No such topic exists!")
+        if not cls.isValidTopic(topicName):
+            raise Exception('Topicname: {} does not exists'.format(topicName))
         
         # Check if user is registered for the topic
-        if int(conID) not in cls.topics.get(topicName).consumerList:
+        if not cls.QList[topicName].isConRegistered(conID):
             raise Exception("Error: Invalid consumer ID!")
         
-        # Get the offset and lock
-        lock = cls.consumers.get(conID)[1]
-        lock.acquire()
-        Q = cls.queue[topicID]
-        index = cls.consumers.get(conID)[0]
-        l = len(Q)
-        # Check if messages are yet to be read
-        if index < l:
-            msg = Q[index]
-            # Update the offset/index
-            cls.consumers.get(conID)[0] += 1
-            obj = Consumer.query.filter_by(id=conID).first()
-            obj.offset+=1
-            db.session.commit()
-            lock.release()
-            return msg[1]
-        else:
-            lock.release()
+        cls.QLock[topicName].acquire()
+        index = cls.QList[topicName].getUpdOffset(conID)
+        cls.QLock[topicName].release()
+
+        if index == -1:
             raise Exception("There are no new messages!")
-        
+        else:
+            msg = cls.QList[topicName].getMessage(index)
+            return msg
 
     @classmethod
     def getSize(cls, topicName, conID):
-        if(topicName not in cls.topics.keys()):
-            raise Exception("Error: No such topic, {} exists!".format(topicName))
+        if not cls.isValidTopic(topicName):
+            raise Exception('Topicname: {} does not exists'.format(topicName))
         # Check if user is registered for the topic
-        if conID not in cls.topics.get(topicName).consumerList:
-            raise Exception("Error: Invalid consumer ID!")
-        print(topicName,conID,cls.consumers.get(conID)[0],cls.queue[cls.topics[topicName].topicID])
-        return len(cls.queue[cls.topics[topicName].topicID])-cls.consumers.get(conID)[0]
+        if not cls.QList[topicName].isConRegistered(conID):
+            raise Exception("Error: Invalid producer ID!")
+        return cls.QList[topicName].getRemainingSize(conID)
+        
         
