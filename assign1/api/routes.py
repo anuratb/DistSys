@@ -29,7 +29,7 @@ onFailure:
 - "message": <string> // Error message
 '''
 from pysyncobj import SyncObj,replicated
-
+import time
 class Counter(SyncObj):
     
     
@@ -56,12 +56,17 @@ def counter():
     while obj._getLeader() is None :
         continue
         
-    obj.incr()
-    print(f"Output: {obj.cnt}")
+    #obj.incr()
+    #print(f"Output: {obj.cnt}")
     return "Success"
 @app.route("/incr",methods=["GET"])
 def incr():
-    obj.incr()
+    while obj._getLeader() is None :
+        time.sleep(2)
+        print("Getting Leader")
+        continue
+    print(f"Leader {obj._getLeader()}")
+    obj.incr(sync = True)
     return "Success"
 @app.route("/getval",methods=["GET"])
 def getval():

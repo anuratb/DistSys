@@ -18,7 +18,7 @@ while counter._getLeader() is None :
         continue
 print(counter.get_counter())  # Output: 0
 
-counter.increment_counter()
-counter.increment_counter()
+counter.increment_counter(sync = True)
+counter.increment_counter(sync = True)
 
 print(counter.get_counter())  # Output: 2
