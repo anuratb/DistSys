@@ -1,8 +1,9 @@
+
 from pysyncobj import SyncObj, replicated
 
 class Counter(SyncObj):
     def __init__(self):
-        super().__init__('localhost:4321', ['localhost:4322'])
+        super().__init__('localhost:4322', ['localhost:4321'])
         self.counter = 0
 
     @replicated
@@ -16,6 +17,7 @@ class Counter(SyncObj):
 counter = Counter()
 while counter._getLeader() is None :
         continue
+
 print(counter.get_counter())  # Output: 0
 
 counter.increment_counter()

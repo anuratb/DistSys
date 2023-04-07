@@ -39,13 +39,16 @@ class Counter(SyncObj):
     
     @replicated
     def incr(self):
+        print(self.cnt)
         self.cnt+=1
+        print(self.cnt)
 
 obj = None
 
 @app.route("/counter",methods=["GET"])
 def counter():
     global obj
+    
     master = request.get_json().get("master")
     slave = request.get_json().get("slave")
     print(master,slave)
@@ -53,8 +56,8 @@ def counter():
     while obj._getLeader() is None :
         continue
         
-    #obj.incr()
-    #print(f"Output: {obj.cnt}")
+    obj.incr()
+    print(f"Output: {obj.cnt}")
     return "Success"
 @app.route("/incr",methods=["GET"])
 def incr():
