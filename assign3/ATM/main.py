@@ -71,6 +71,7 @@ if __name__ == '__main__':
             print("Lock is None")
             X = 1
         
+        print(syncObj.getStatus())
         if X:
             time.sleep(1)
             continue

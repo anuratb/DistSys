@@ -68,7 +68,7 @@ def create_topic():
 @ app.route("/topics", methods=['GET'])
 def list_topics():
     try : 
-        topic_list = TopicList.listTopics()
+        topic_list = QueueList.listTopics()
         topic_string : str = ""
 
         for topic in topic_list.keys() :
