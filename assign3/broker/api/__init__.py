@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import threading
 import json
-from data_struct import createIDSet, createSyncObj
+from data_struct import createSyncObj, createQObj
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@10.102.68.15:5432/anurat'
 

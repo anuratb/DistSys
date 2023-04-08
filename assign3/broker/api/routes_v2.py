@@ -1,7 +1,7 @@
 
 from flask import request
 from api import app
-from api.data_struct import QObj
+from api.data_struct import QueueList
 
 '''
     a. CreateTopic
@@ -26,11 +26,16 @@ from api.data_struct import QObj
 '''
 @ app.route("/topics", methods=['POST'])
 def create_topic():
-    topic_name : str = request.get_json().get('name')
-    ID_LIST = request.get_json().get('ID_LIST')
+    topic_name : str = request.get_json().get('name') 
+    selfAddr = request.get_json().get('master') 
+    otherAddrs = request.get_json().get('slave')
+    isMainReplica = request.get_json().get('isMainReplica')
 
     try :
-        QObj.addTopicWrapper(topic_name, ID_LIST)
+        QueueList.createTopic(selfAddr, otherAddrs, topic_name)
+        if isMainReplica:
+            QueueList.addTopic(topic_name)
+
         return {
             "status" : "Success" , 
             "message" : 'Topic {} created successfully'.format(topic_name)
@@ -63,7 +68,7 @@ def create_topic():
 @ app.route("/topics", methods=['GET'])
 def list_topics():
     try : 
-        topic_list = QObj.listTopics()
+        topic_list = QueueList.listTopics()
         topic_string : str = ""
 
         for topic in topic_list.keys() :
@@ -104,9 +109,8 @@ def register_consumer():
     topicName = request.get_json().get("topic")
     partition = request.get_json().get("partition")
     topic = str(partition) + '#' + topicName
-    ID_LIST = request.get_json().get('ID_LIST')
     try:
-        cid = QObj.registerConsumer(topic, ID_LIST)
+        cid = QueueList.registerConsumer(topic)
         return {
             "status":"Success",
             "consumer_id":cid
@@ -141,9 +145,8 @@ def register_producer():
     topicName = request.get_json().get("topic")
     partition = request.get_json().get("partition")
     topic = str(partition) + '#' + topicName
-    ID_LIST = request.get_json().get('ID_LIST')
     try:
-        pid = QObj.registerProducer(topic, ID_LIST)
+        pid = QueueList.registerProducer(topic)
         return {
             "status":"Success",
             "producer_id":pid
@@ -183,9 +186,8 @@ def enqueue():
         message: str = request.get_json().get('message')
         print(topicName,partition,producer_id,message)
         topic = str(partition) + '#' + topicName
-        ID_LIST = request.get_json().get('ID_LIST')
 
-        QObj.enqueue(topic, producer_id , message, ID_LIST)
+        QueueList.enqueue(topic, producer_id , message)
         return {
             "status": "Success",
             "message": ""
@@ -223,9 +225,8 @@ def dequeue():
         partition = request.args.get("partition")
         consumer_id:int= int(request.args.get('consumer_id', type=int))
         topic = str(partition) + '#' + topicName
-        ID_LIST = request.get_json().get('ID_LIST')
 
-        msg = QObj.dequeue(topic, consumer_id, ID_LIST)
+        msg = QueueList.dequeue(topic, consumer_id)
         return {
             "status": "Success",
             "message": msg
@@ -261,10 +262,9 @@ def size():
     partition = request.args.get("partition")
     consumer_id : int = request.args.get('consumer_id', type=int)
     topic = str(partition) + '#' + topicName
-    ID_LIST = request.get_json().get('ID_LIST')
-
+    
     try : 
-        queue_size : int = QObj.getSize(topic, consumer_id, ID_LIST)
+        queue_size : int = QueueList.getSize(topic, consumer_id)
         return {
             "status" : "Success" , 
             "size" : queue_size 

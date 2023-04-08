@@ -10,6 +10,7 @@ import threading
 import multiprocessing
 from pysyncobj.batteries import ReplLockManager
 
+ID = 1
 
 class User(SyncObj):
 
@@ -20,10 +21,11 @@ class User(SyncObj):
         self.lock = threading.Lock()
         
     @replicated
-    def incCounter(self):
-        old = self.counter
-        self.counter += 1
-        return old
+    def incCounter(self, id):
+        if ID in id:
+            old = self.counter
+            self.counter += 1
+            return old
 
     
     def getCounter(self):
@@ -59,31 +61,39 @@ if __name__ == '__main__':
 
     user = User('localhost:%d' % userMainPort, userPartners)
 
-    lockManager = ReplLockManager(autoUnlockTime=75) # Lock will be released if connection dropped for more than 75 seconds
-    syncObj = SyncObj('localhost:%d' % accountMainPort, accountPartners, consumers=[lockManager])
+    # lockManager = ReplLockManager(autoUnlockTime=75) # Lock will be released if connection dropped for more than 75 seconds
+    # syncObj = SyncObj('localhost:%d' % accountMainPort, accountPartners, consumers=[lockManager])
     
     while True:
         X = 0
         if user._getLeader() is None:
             print("user is None")
             X = 1
-        if syncObj._getLeader() is None:
-            print("Lock is None")
-            X = 1
+        # if syncObj._getLeader() is None:
+        #     print("Lock is None")
+        #     X = 1
         
-        print(syncObj.getStatus())
+        # print(syncObj.getStatus())
         if X:
             time.sleep(1)
             continue
 
         ip = int(input("Enter: "))
         if ip == 0:
-            if lockManager.tryAcquire('testLockName3', sync=True):
-                # do some actions
-                print("Before incCounter:")
-                val = user.incCounter(sync = True)
-                print(f"New counter: {val}")
-                # lockManager.release('testLockName')
+            # if lockManager.tryAcquire('testLockName3', sync=True):
+            #     # do some actions
+            #     print("Before incCounter:")
+            #     val = user.incCounter(sync = True)
+            #     print(f"New counter: {val}")
+            #     # lockManager.release('testLockName')
+            id = [int(x) for x in input("Enter ID:").split(' ')]
+            print(id)
+            if user.isReady():
+                print("I am ready")
+            val = user.incCounter(id, sync = True)
+            print(f"New counter: {val}")
         else:
-            print(f"GetCounter: {user.getCounter()}")
+            if user.isReady():
+                print("I am ready")
+            print(f"GetCounter: {user.counter}")
         
