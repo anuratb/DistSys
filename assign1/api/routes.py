@@ -1,8 +1,8 @@
 
 from flask import   request, jsonify
 from api import app,db,cnt
-import flask
-
+import flask, requests
+# from data_struct import getObj
 '''
 Method: POST
 Endpoint: /topics
@@ -28,37 +28,26 @@ onSuccess:
 onFailure:
 - "message": <string> // Error message
 '''
-from pysyncobj import SyncObj,replicated
+
 import time
-class Counter(SyncObj):
-    
-    
-    def __init__(self, selfNodeAddr = None, partnerNodeAddrs = None):
-        super(Counter, self).__init__(selfNodeAddr, partnerNodeAddrs)
-        self.cnt = 0
-    
-    @replicated
-    def incr(self):
-        self.cnt+=1
 
-obj = None
 
-@app.route("/counter",methods=["GET"])
-def counter():
-    global obj
-    master = request.args.get('master', type=str)
-    slave = [request.args.get('slave', type=str)]
-    print(master, slave)
-    obj = Counter(master,slave)
-    # obj.__init__(master, slave)
-    while True:
-        time.sleep(1)
-        L = obj._getLeader()
-        if L is not None:
-            print(L)
-            break
+# @app.route("/counter",methods=["GET"])
+# def counter():
+#     global obj
+#     master = request.args.get('master', type=str)
+#     slave = [request.args.get('slave', type=str)]
+#     print(master, slave)
+#     obj = Counter(master,slave)
+#     # obj.__init__(master, slave)
+#     while True:
+#         time.sleep(1)
+#         L = obj._getLeader()
+#         if L is not None:
+#             print(L)
+#             break
 
-    return "Success"
+#     return "Success"
     
 @app.route("/incr",methods=["GET"])
 def incr():
@@ -67,12 +56,13 @@ def incr():
     #     print("Getting Leader")
     #     continue
     # print(f"Leader {obj._getLeader()}")
-    obj.incr(sync = True)
+    print("INCR:")
+    getObj().incr(sync = True)
     return "Success"
 
 @app.route("/getval",methods=["GET"])
 def getval():
-    return str(obj.cnt)
+    return str(getObj().cnt)
 
 
 @ app.route("/topics", methods=[ 'GET','POST'])
