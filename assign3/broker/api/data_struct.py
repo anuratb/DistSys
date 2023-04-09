@@ -3,8 +3,8 @@ from api import db
 from api.models import QueueDB,Topics,Producer,Consumer
 from pysyncobj import SyncObj, replicated
 from pysyncobj.batteries import ReplLockManager
-
-BROKER_ID = None
+import os
+BROKER_ID = os.environ.get('BROKER_ID')
 
 lockManager = ReplLockManager(autoUnlockTime = 75) # Lock will be released if connection dropped for more than 75 seconds
 syncObj = None
@@ -105,7 +105,7 @@ class Queue(SyncObj):
     def getRemainingSize(self, conID):
         return len(self.queue) - self.Offset[conID][0]
 
-class QueueList:
+class QueueList(SyncObj):
     
     def __init__(self, selfAddr, otherAddrs):
         super().__init__(selfAddr, otherAddrs)

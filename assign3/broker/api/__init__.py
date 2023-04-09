@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import threading
 import json
-from data_struct import createSyncObj, createQObj
+#from api.data_struct import createSyncObj, createQObj
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@10.102.68.15:5432/anurat'
 
@@ -49,7 +49,12 @@ def create_app(test_config = None):
     return app, db
 
 app, db = create_app('./config.json')
-
+from api.data_struct import createQObj
+createQObj(os.environ["SELF_ADDR"],os.environ["SLAVE_ADDR"].split('$'))
+from api.data_struct import QObj
+while QObj._getLeader() is None:
+    continue
+'''
 from api.data_struct import TopicNode,Queue
 from api.models import QueueDB,Topics,Producer,Consumer
 
@@ -80,6 +85,7 @@ def load_from_db():
     Queue.cntCons = Consumer.query.count()
     Queue.cntMessage = QueueDB.query.count()
     #print(Queue.queue)
+    '''
 
 
 # a simple page that says hello
@@ -142,10 +148,10 @@ def testp():
 
 app.app_context().push()
 
-Queue.clear()
-# db.drop_all()
+#Queue.clear()
+db.drop_all()
 db.create_all()
-load_from_db()
+#load_from_db()
 
     
     
