@@ -1,18 +1,15 @@
 import threading
 from . import db,app
-import json
 import os, requests, time
 from api import random,DB_URI,replFactor
-from api.models import ManagerDB,ReplicationDB, TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB,DockerDB
-from sqlalchemy_utils.functions import database_exists
-from api import db_host,db_port,db_password,db_username,docker_img_broker, APP_URL
+from api.models import ManagerDB,ReplicationDB, TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB
+from api import db_password,db_username,docker_img_broker, APP_URL
 import subprocess
 from api.utils import is_server_running
-import psycopg2
 
 from api.utils import *
 
-from pysyncobj import SyncObj,replicated
+from pysyncobj import SyncObj
 
 
 LOG_path = './LOG.txt'
@@ -22,14 +19,12 @@ file = open('LOG_path.txt','w')
 
 
 
-class TopicMetaData(SyncObj):
+class TopicMetaData:
 
-    def __init__(self,selfNodeAddr, partnerNodeAddrs):
-        #sync
-        super(TopicMetaData, self).__init__(selfNodeAddr, partnerNodeAddrs)
+    def __init__(self):
         # Map from topicName to {topicID, numPartitions, rrindex, lock}
         self.Topics = {}
-        # A map from partiton#topicName to the corresponding brokerID
+        # A map from partiton#topicName to the corresponding list of brokerIDs (i.e. replica)
         self.PartitionBroker = {}
         self.lock = threading.Lock()
 
@@ -37,7 +32,7 @@ class TopicMetaData(SyncObj):
 
 
     # Adds a topic and randomly decides number of paritions
-    @replicated
+    
     def addTopic(self, topicName):
         # TODO get the current number of brokers numBrokers
         numBrokers = len(Manager.brokers)
@@ -47,7 +42,7 @@ class TopicMetaData(SyncObj):
 
         file.write("INFO Choosing {} partitions for topic {}".format(numPartitions, topicName))
 
-        # Choose the brokers (TODO how?)
+        # Choose the brokers
         numPartitions, assignedBrokers = Manager.assignBrokers(topicName, numPartitions)
 
         self.lock.acquire()
@@ -70,6 +65,7 @@ class TopicMetaData(SyncObj):
         for K in assignedBrokers.keys():
             self.PartitionBroker[K] = assignedBrokers[K]
 
+            # TODO assignedBrokers[i] is now a list... Modify DB updates
             ####################### DB UPDATES ###########################
             db.session.add(
                 TopicBroker(
@@ -101,7 +97,7 @@ class TopicMetaData(SyncObj):
                 raise Exception(f"Invalid partition for topic: {topicName}")
         return ret
 
-    @replicated
+    
     def getBrokerID(self, subbedTopicName):
         return self.PartitionBroker[subbedTopicName]
 
@@ -120,7 +116,7 @@ class ProducerMetaData(SyncObj):
         self.clientCnt = cnt
         self.subscriptionLock = threading.Lock()
         self.rrIndexLock = {}
-    @replicated
+    
     def addSubscription(self, clientIDs, topicName):
         self.subscriptionLock.acquire()
         clientID = "$" + str(self.clientCnt)
@@ -194,7 +190,7 @@ class ConsumerMetaData(SyncObj):
         self.subscriptionLock = threading.Lock()
         self.rrIndexLock = {}
 
-    @replicated 
+     
     def addSubscription(self, clientIDs, topicName):
         self.subscriptionLock.acquire()
         clientID = "$" + str(self.clientCnt)
@@ -250,7 +246,7 @@ class ConsumerMetaData(SyncObj):
         return brokerID, ConsID,partition
 
 
-class Manager(SyncObj):
+class Manager:
     
     topicMetaData = TopicMetaData()
     consumerMetaData = ConsumerMetaData()
@@ -259,64 +255,94 @@ class Manager(SyncObj):
     # A map from broker ID to broker Metadata
     brokers = {}
     X = 0
-    #TODO : Need to check if this will work
-    def __init__(self, selfNodeAddr = None, partnerNodeAddrs = None):
-        super(Manager, self).__init__(selfNodeAddr, partnerNodeAddrs)
+
+    @classmethod
+    def getRandomBrokers(cls):
+        # Return a random set of replfactor many brokerIDs
+        brokerSet = []
+        remBrokerIDs = list(cls.brokers.keys())
+        l = len(remBrokerIDs)
+        for _ in range(replFactor):
+            randInd = int(random() * l)
+            brokerSet.append(remBrokerIDs[randInd])
+            remBrokerIDs.remove(remBrokerIDs[randInd])
+            l -= 1
+        return brokerSet
+
     @classmethod
     def assignBrokers(cls, topicName, numPartitions):
         PartitionBroker = {}
         brokerIDs = list(cls.brokers.keys())
         l = len(brokerIDs)
-        brokerList = []
-        for i in range(numPartitions*replFactor):
-            brokerList.append(brokerIDs[int(random() * l)])
 
         actualPartitions = 0
 
-        for i in range(numPartitions):
-            all_addrs = []
-            objs= []
-            for j in range(replFactor):
-                # TODO assign the broker url
-                brokerID = brokerList[i*replFactor+j]
-                brokerTopicName = str(actualPartitions + 1) + '#' + topicName
-                url = cls.brokers[brokerID].url.split(":")[0]+":"+str(cls.broker[brokerID].port_cnt)
-                cls.broker[brokerID].port_cnt += 1
-                BrokerMetaDataDB.query.filter_by(broker_id=brokerID).update({"port_cnt":cls.broker[brokerID].port_cnt})
-                all_addrs.append(url)
-                obj = ReplicationDB(
-                    replica_id=j,
-                    topic=topicName,
-                    partition=i,
-                    url=url
-                )
-                objs.append(obj)
-                #url = cls.brokers[brokerID].url
-            for j in range(replFactor):
-                for k in range(replFactor):
-                    if j != k:
-                        objs[j].replicas.append(objs[k])
-                master = all_addrs[j]
-                slave = all_addrs[:j] + all_addrs[j+1:]
-                res = requests.post(str(url) + "/topics", 
-                    json = {
-                        "name": brokerTopicName,
-                        "master":master,
-                        "slave":slave
-                    }
-                )
+        # TODO Perform necessary DB updates here
+        for _ in range(numPartitions):
+            # TODO assign the broker url
+            brokerSet = cls.getRandomBrokers()
+            brokerTopicName = str(actualPartitions + 1) + '#' + topicName
 
-                # Post request to the broker to create the topic
-
-                # Broker failure (TODO: what to do?)
-                if res.status_code != 200:
-                    requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
-                elif(res.json().get("status") == "Success"):
-                    PartitionBroker[brokerTopicName] = brokerID
-                    actualPartitions += 1  
-            db.session.add_all(objs)
-        db.session.commit()  
+            url = cls.brokers[brokerSet[0]].url
+            # Send Post request to any one of the replicas
+            res = requests.post(str(url) + "/topics", 
+                json = {
+                    "name": brokerTopicName,
+                    "ID_LIST": []
+                }
+            )
+            # Broker failure
+            if res.status_code != 200:
+                requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerSet[0])})
+            elif(res.json().get("status") == "Success"):
+                PartitionBroker[brokerTopicName] = brokerSet
+                actualPartitions += 1    
         return actualPartitions, PartitionBroker
+
+        # for i in range(numPartitions):
+        #     all_addrs = []
+        #     objs= []
+        #     for j in range(replFactor):
+        #         # TODO assign the broker url
+        #         brokerID = brokerList[i*replFactor+j]
+        #         brokerTopicName = str(actualPartitions + 1) + '#' + topicName
+        #         url = cls.brokers[brokerID].url.split(":")[0]+":"+str(cls.broker[brokerID].port_cnt)
+        #         cls.broker[brokerID].port_cnt += 1
+        #         BrokerMetaDataDB.query.filter_by(broker_id=brokerID).update({"port_cnt":cls.broker[brokerID].port_cnt})
+        #         all_addrs.append(url)
+        #         obj = ReplicationDB(
+        #             replica_id=j,
+        #             topic=topicName,
+        #             partition=i,
+        #             url=url
+        #         )
+        #         objs.append(obj)
+        #         #url = cls.brokers[brokerID].url
+        #     for j in range(replFactor):
+        #         for k in range(replFactor):
+        #             if j != k:
+        #                 objs[j].replicas.append(objs[k])
+        #         master = all_addrs[j]
+        #         slave = all_addrs[:j] + all_addrs[j+1:]
+        #         res = requests.post(str(url) + "/topics", 
+        #             json = {
+        #                 "name": brokerTopicName,
+        #                 "master":master,
+        #                 "slave":slave
+        #             }
+        #         )
+
+        #         # Post request to the broker to create the topic
+
+        #         # Broker failure (TODO: what to do?)
+        #         if res.status_code != 200:
+        #             requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
+        #         elif(res.json().get("status") == "Success"):
+        #             PartitionBroker[brokerTopicName] = brokerID
+        #             actualPartitions += 1  
+        #     db.session.add_all(objs)
+        # db.session.commit()  
+        # return actualPartitions, PartitionBroker
 
     @classmethod
     def getBrokerUrl(cls, topicName, partition):
@@ -326,7 +352,6 @@ class Manager(SyncObj):
 
 
     @classmethod
-    @replicated
     def registerClientForAllPartitions(cls, url, topicName, isProducer):
         if topicName not in Manager.topicMetaData.Topics.keys():
             raise Exception(f"Topic {topicName} doesn't exist")
@@ -407,16 +432,15 @@ class BrokerMetaData:
         self.brokerID = brokerID
         self.docker_id = docker_id
         self.lock = threading.Lock()
-        self.port = 8000#initial port for raft
+        self.port = 8000 #initial port for raft
 
-class Docker(SyncObj):
+class Docker:
     
     cnt = 0
     # Maps Docker Name to Broker Object --> Not needed
     #self.id ={}
     lock = threading.Lock()
-    def __init__(self, selfNodeAddr = None, partnerNodeAddrs = None):
-        super(Docker, self).__init__(selfNodeAddr, partnerNodeAddrs)
+
     @classmethod
     def build_run(cls, path:str):
         cls.lock.acquire()
