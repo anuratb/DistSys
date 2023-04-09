@@ -55,7 +55,7 @@ def counter():
     obj = Counter(master,slave)
     while obj._getLeader() is None :
         continue
-        
+    print(obj.getStatus())
     #obj.incr()
     #print(f"Output: {obj.cnt}")
     return "Success"

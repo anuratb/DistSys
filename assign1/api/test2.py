@@ -1,6 +1,6 @@
 
 from pysyncobj import SyncObj, replicated
-
+SyncObj
 class Counter(SyncObj):
     def __init__(self):
         super().__init__('localhost:4322', ['localhost:4321'])

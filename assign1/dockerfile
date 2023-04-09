@@ -5,4 +5,6 @@ WORKDIR /usr/src/manage_brokers
 COPY . .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
+
+EXPOSE 5124-5130
 CMD ["python3","run.py"]
