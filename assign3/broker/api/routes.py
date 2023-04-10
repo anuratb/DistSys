@@ -27,7 +27,7 @@ from api.data_struct import getQObj
 @ app.route("/topics", methods=['POST'])
 def create_topic():
     topic_name : str = request.get_json().get('name')
-    ID_LIST = request.get_json().get('ID_LIST')
+    ID_LIST = [str(x) for x in request.get_json().get('ID_LIST')]
 
     try :
         getQObj().addTopicWrapper(topic_name, ID_LIST)
@@ -66,7 +66,7 @@ def list_topics():
         topic_list = getQObj().listTopics()
         topic_string : str = ""
 
-        for topic in topic_list.keys() :
+        for topic in topic_list:
             topic_string += topic + ", "
         
         return {
