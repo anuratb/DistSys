@@ -98,7 +98,7 @@ class TopicMetaData:
         return ret
 
     
-    def getBrokerID(self, subbedTopicName):
+    def getBrokerList(self, subbedTopicName):
         return self.PartitionBroker[subbedTopicName]
 
     def getTopicsList(self):
@@ -163,18 +163,18 @@ class ProducerMetaData(SyncObj):
     Returns the brokerID and prodID to which the message should be sent
     '''
     def getRRIndex(self, clientID, topicName, rrIndex):
-        globProd = globalProducerDB.query.filter_by(glob_id=clientID, topic=topicName).first()
+        globProd = globalProducerDB.query.filter_by(glob_id = clientID, topic = topicName).first()
 
-        #To ensure load balancing
+        # To ensure load balancing
         cnt = len(globProd.localProducer)
         ind = (rrIndex + int(globProd.rrindex)) % cnt
 
         localProd = globProd.localProducer[ind]
-        prodID= localProd.local_id
+        prodID = localProd.local_id
         partition = localProd.partition
-        brokerID = localProd.broker_id
+        subbedTopicName = TopicMetaData.getSubbedTopicName(topicName, partition)
 
-        return brokerID, prodID, partition
+        return TopicMetaData.getBrokerList(subbedTopicName), prodID, partition
 
 
 class ConsumerMetaData(SyncObj):
@@ -228,11 +228,11 @@ class ConsumerMetaData(SyncObj):
             return False
         return True
 
-    def getRRIndex(self, clientID, topicName, topic_rrindex):#For now no need to update db here
+    def getRRIndex(self, clientID, topicName, topic_rrindex): #For now no need to update db here
         if topicName not in [obj.topicName for obj in TopicDB.query.all()]:
             raise Exception(f"Topic {topicName} doesn't exist")
-        cons_rrindex = globalConsumerDB.query.filter_by(glob_id=clientID, topic=topicName).first().rrindex
-        globCons = globalConsumerDB.query.filter_by(glob_id=clientID,topic=topicName).first()
+        cons_rrindex = globalConsumerDB.query.filter_by(glob_id = clientID, topic = topicName).first().rrindex
+        globCons = globalConsumerDB.query.filter_by(glob_id = clientID, topic = topicName).first()
 
         #To ensure load balancing
         cnt = len(globCons.localConsumer)
@@ -241,10 +241,9 @@ class ConsumerMetaData(SyncObj):
         localCons = globCons.localConsumer[ind]
         ConsID= localCons.local_id
         partition = localCons.partition
-        brokerID = localCons.broker_id
-
-        return brokerID, ConsID,partition
-
+        subbedTopicName = TopicMetaData.getSubbedTopicName(topicName, partition)
+        
+        return TopicMetaData.getBrokerList(subbedTopicName), ConsID, partition
 
 class Manager:
     
@@ -288,7 +287,7 @@ class Manager:
             res = requests.post(str(url) + "/topics", 
                 json = {
                     "name": brokerTopicName,
-                    "ID_LIST": []
+                    "ID_LIST": brokerSet
                 }
             )
             # Broker failure
@@ -345,10 +344,10 @@ class Manager:
         # return actualPartitions, PartitionBroker
 
     @classmethod
-    def getBrokerUrl(cls, topicName, partition):
+    def getBrokerList(cls, topicName, partition):
         subbedTopicName = cls.topicMetaData.getSubbedTopicName(topicName, partition)
-        brokerID = cls.topicMetaData.getBrokerID(subbedTopicName)
-        return cls.getBrokerUrlFromID(brokerID)
+        brokerList = cls.topicMetaData.getBrokerList(subbedTopicName)
+        return brokerList
 
 
     @classmethod
@@ -361,13 +360,15 @@ class Manager:
         brokerMap = {}
         for i in range(1, numPartitions + 1):
             brokerTopicName = str(i) + '#' + topicName
-            brokerID = cls.topicMetaData.getBrokerID(brokerTopicName)
-            brokerUrl = cls.getBrokerUrlFromID(brokerID)
+            brokerList = cls.topicMetaData.getBrokerList(brokerTopicName)
+            brokerID = int(random() * len(brokerList))
+            brokerUrl = cls.getBrokerUrlFromID(brokerList[brokerID])
             res = requests.post(
                 brokerUrl + url,
                 json={
                     "topic": topicName,
-                    "partition": str(i)
+                    "partition": str(i),
+                    "ID_LIST": brokerList
                 })
 
             # TODO Broker Failure
