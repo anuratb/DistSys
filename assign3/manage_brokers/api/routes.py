@@ -112,9 +112,16 @@ def register_consumer():
     partition = request.get_json().get("partition")
     try:
         if partition:
-            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-            #return redirect(brokerUrl + "/consumer/register", 307)
-            return requests.post(brokerUrl + "/consumer/register", json=request.get_json()).json()
+            ID_LIST = Manager.getBrokerList(topic, int(partition))
+            brokerUrl = Manager.getBrokerUrlFromID(ID_LIST[int(random() * len(ID_LIST))])
+            return requests.post(
+                brokerUrl + "/consumer/register", 
+                json = {
+                    "topic": topic,
+                    "partition": partition,
+                    "ID_LIST": ID_LIST
+                }
+            ).json()
         else:
             # Subscribe to all partitions of a topic
             retID = Manager.registerClientForAllPartitions("/consumer/register", topic, False)
@@ -155,8 +162,16 @@ def register_producer():
     
     try:
         if partition:
-            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-            return redirect(brokerUrl + "/producer/register", 307)
+            ID_LIST = Manager.getBrokerList(topic, int(partition))
+            brokerUrl = Manager.getBrokerUrlFromID(ID_LIST[int(random() * len(ID_LIST))])
+            return requests.post(
+                brokerUrl + "/producer/register", 
+                json = {
+                    "topic": topic,
+                    "partition": partition,
+                    "ID_LIST": ID_LIST
+                }
+            ).json()
         else:
             # Subscribe to all partitions of a topic
             retID = Manager.registerClientForAllPartitions("/producer/register", topic, True)
@@ -197,6 +212,12 @@ def enqueue():
     producer_id: str = request.get_json().get('producer_id')
     message: str = request.get_json().get('message')
 
+    ID_LIST = None
+    localProdID = None
+    brokerUrl = None
+    brokerID = None
+    partition = None
+
     try:
         if producer_id[0] == '$':
             #Update topic rrindex
@@ -205,45 +226,45 @@ def enqueue():
             #Manager.topicMetaData.Topics[topic][2] += 1
             #TODO sync
             ###################### DB Update ############################
-            obj = TopicDB.query.filter_by(topicName=topic).first()
+            obj = TopicDB.query.filter_by(topicName = topic).first()
             rrIndex = obj.rrindex
-            obj.rrindex = obj.rrindex+1            
+            obj.rrindex = obj.rrindex + 1            
             db.session.commit()
             #############################################################
             #Manager.topicMetaData.Topics[topic][3].release()
             
-            brokerID, prodID, partition = Manager.producerMetaData.getRRIndex(producer_id, topic, rrIndex)
-            brokerUrl = Manager.getBrokerUrlFromID(brokerID)
-
-            res = requests.post(
-                brokerUrl + "/producer/produce",
-                json = {
-                    "topic": topic,
-                    "producer_id": prodID,
-                    "message":message,
-                    "partition":partition
-                }
-            )
-
-            if res.status_code != 200:
-                # Recover the broker
-                requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
-                return {
-                    "status": "Failure",
-                    "message": "Service currently unavailable. Try again later."
-                }
-            elif(res.json().get("status") == "Success"):
-                return {
-                    "status": "Success",
-                    "message": ""
-                }
-            else:
-                raise Exception(res.json.get("message"))
+            ID_LIST, localProdID, partition = Manager.producerMetaData.getRRIndex(producer_id, topic, rrIndex)    
         else:
-            partition = request.get_json().get('partition')
-            brokerUrl = Manager.getBrokerUrl(topic, int(partition))
-            return redirect(brokerUrl + "/producer/produce", 307)
-     
+            ID_LIST = Manager.getBrokerList(topic, int(partition))
+        
+        brokerID = ID_LIST[int(random() * len(ID_LIST))]
+        brokerUrl = Manager.getBrokerUrlFromID(brokerID)
+        res = requests.post(
+            brokerUrl + "/producer/produce",
+            json = {
+                "topic": topic,
+                "producer_id": localProdID,
+                "message":message,
+                "partition":partition,
+                "ID_LIST": ID_LIST
+            }
+        )
+
+        if res.status_code != 200:
+            # Recover the broker
+            requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
+            return {
+                "status": "Failure",
+                "message": "Service currently unavailable. Try again later."
+            }
+        elif(res.json().get("status") == "Success"):
+            return {
+                "status": "Success",
+                "message": ""
+            }
+        else:
+            raise Exception(res.json.get("message"))
+
     except Exception as e:
         return {
             "status": "Failure",

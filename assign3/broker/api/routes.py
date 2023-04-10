@@ -1,7 +1,7 @@
 
 from flask import request
 from api import app
-from api.data_struct import QObj
+from data_struct import getQObj
 
 '''
     a. CreateTopic
@@ -30,7 +30,7 @@ def create_topic():
     ID_LIST = request.get_json().get('ID_LIST')
 
     try :
-        QObj.addTopicWrapper(topic_name, ID_LIST)
+        getQObj().addTopicWrapper(topic_name, ID_LIST)
         return {
             "status" : "Success" , 
             "message" : 'Topic {} created successfully'.format(topic_name)
@@ -63,7 +63,7 @@ def create_topic():
 @ app.route("/topics", methods=['GET'])
 def list_topics():
     try : 
-        topic_list = QObj.listTopics()
+        topic_list = getQObj().listTopics()
         topic_string : str = ""
 
         for topic in topic_list.keys() :
@@ -106,10 +106,10 @@ def register_consumer():
     topic = str(partition) + '#' + topicName
     ID_LIST = request.get_json().get('ID_LIST')
     try:
-        cid = QObj.registerConsumer(topic, ID_LIST)
+        cid = getQObj().registerConsumer(topic, ID_LIST)
         return {
-            "status":"Success",
-            "consumer_id":cid
+            "status": "Success",
+            "consumer_id": cid
         }
     except Exception as e:
         return {
@@ -143,7 +143,7 @@ def register_producer():
     topic = str(partition) + '#' + topicName
     ID_LIST = request.get_json().get('ID_LIST')
     try:
-        pid = QObj.registerProducer(topic, ID_LIST)
+        pid = getQObj().registerProducer(topic, ID_LIST)
         return {
             "status":"Success",
             "producer_id":pid
@@ -185,7 +185,7 @@ def enqueue():
         topic = str(partition) + '#' + topicName
         ID_LIST = request.get_json().get('ID_LIST')
 
-        QObj.enqueue(topic, producer_id , message, ID_LIST)
+        getQObj().enqueue(topic, producer_id , message, ID_LIST)
         return {
             "status": "Success",
             "message": ""
@@ -225,7 +225,7 @@ def dequeue():
         topic = str(partition) + '#' + topicName
         ID_LIST = request.get_json().get('ID_LIST')
 
-        msg = QObj.dequeue(topic, consumer_id, ID_LIST)
+        msg = getQObj().dequeue(topic, consumer_id, ID_LIST)
         return {
             "status": "Success",
             "message": msg
@@ -264,7 +264,7 @@ def size():
     ID_LIST = request.get_json().get('ID_LIST')
 
     try : 
-        queue_size : int = QObj.getSize(topic, consumer_id, ID_LIST)
+        queue_size : int = getQObj().getSize(topic, consumer_id, ID_LIST)
         return {
             "status" : "Success" , 
             "size" : queue_size 

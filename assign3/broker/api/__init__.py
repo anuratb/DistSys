@@ -82,64 +82,6 @@ def load_from_db():
     #print(Queue.queue)
 
 
-# a simple page that says hello
-@app.route('/hello1')
-def hello1():
-    try:
-        # msg = Queue.dequeue('A', 0)
-        msg = Queue.enqueue('News', 1, "HELLO")
-        msg = "Success"
-    except Exception as err:
-        return err.args[0]
-
-    return msg
-
-@app.route('/hello2')
-def hello2():
-    try:
-        msg = Queue.dequeue('News', 0)
-
-    except Exception as err:
-        return err.args[0]
-
-    return msg
-
-@app.route('/testAddtopic')
-def testAddtopic():
-    try:
-        Queue.createTopic("News")
-    except Exception as err:
-        return err.args[0]
-
-    return "Success adding topic"+str(Queue.listTopics())
-
-@app.route('/testGetSize')
-def testGetSize():
-    try:
-        ln = Queue.getSize('News',0)
-    except Exception as err:
-        return err.args[0]
-
-    return "Success "+str(ln)
-
-@app.route('/testc')
-def testc():
-    try:
-        c = Queue.registerConsumer('News')
-    except Exception as err:
-        return err.args[0]
-
-    return "Success "+str(c)
-
-@app.route('/testp')
-def testp():
-    try:
-        c = Queue.registerProducer('News')
-    except Exception as err:
-        return err.args[0]
-
-    return "Success "+str(c)
-
 app.app_context().push()
 
 Queue.clear()

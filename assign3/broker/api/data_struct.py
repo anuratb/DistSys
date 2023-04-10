@@ -298,4 +298,7 @@ def setBrokerID(broker_id):
 def createQObj(selfAddr, otherAddrs):
     global QObj
     QObj = QueueList(selfAddr, otherAddrs)
+
+def getQObj():
+    return QObj
     
