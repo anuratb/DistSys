@@ -28,7 +28,7 @@ class BrokerMetaData:
         self.docker_id = docker_id
         self.lock = threading.Lock()
         self.port = 8000 #initial port for raft
-
+    
 class Manager(SyncObj):
 
     def __init__(self, selfAddr, otherAddrs):
@@ -57,6 +57,47 @@ class Manager(SyncObj):
         self.subscriptionLock = [threading.Lock(), threading.Lock()]
         self.rrIndexLock = [{}, {}]
 
+        # Broker level IDs
+        self.brokerTopicID = 0
+        self.brokerTopicIDLock = threading.Lock()
+        self.msgID = 0
+        self.msgIDLock = threading.Lock()
+        self.brokerConID = 0
+        self.brokerConIDLock = threading.Lock()
+        self.brokerProdID = 0
+        self.brokerProdIDLock = threading.Lock()
+
+    @replicated
+    def getBrokerProdID(self):
+        self.brokerProdIDLock.acquire()
+        oldVal = self.brokerProdID
+        self.brokerProdID += 1
+        self.brokerProdIDLock.release()
+        return oldVal
+
+    @replicated
+    def getBrokerConID(self):
+        self.brokerConIDLock.acquire()
+        oldVal = self.brokerConID
+        self.brokerConID += 1
+        self.brokerConIDLock.release()
+        return oldVal
+
+    @replicated
+    def getBrokerTopicID(self):
+        self.brokerTopicIDLock.acquire()
+        oldVal = self.brokerTopicID
+        self.brokerTopicID += 1
+        self.brokerTopicIDLock.release()
+        return oldVal
+
+    @replicated
+    def getMsgID(self):
+        self.msgIDLock.acquire()
+        oldVal = self.msgID
+        self.msgID += 1
+        self.msgIDLock.release()
+        return oldVal
 
     @replicated
     def getTopicID(self):
@@ -220,7 +261,7 @@ class Manager(SyncObj):
 
     # Adds a topic and randomly decides number of paritions
     def addTopic(self, topicName):
-        numBrokers = len(Manager.brokers)
+        numBrokers = len(self.brokers)
         val = random() * numBrokers
         numPartitions = int(val)
         if  numPartitions == 0: numPartitions = 1
@@ -233,7 +274,7 @@ class Manager(SyncObj):
             raise Exception(f'Topicname: {topicName} already exists')
         topicID = self.getTopicID(sync = True)
         # Choose the brokers
-        numPartitions, assignedBrokers = Manager.assignBrokers(topicName, numPartitions)
+        numPartitions, assignedBrokers = self.assignBrokers(topicName, numPartitions)
         # All Brokers are down
         if numPartitions == 0:
             raise Exception("Service currently unavailable. Please try again later.")
@@ -267,11 +308,13 @@ class Manager(SyncObj):
             brokerTopicName = str(actualPartitions + 1) + '#' + topicName
 
             url = self.brokers[brokerSet[0]].url
+            brokerTopicID = self.getBrokerTopicID(sync = True)
             # Send Post request to any one of the replicas
             res = requests.post(str(url) + "/topics", 
                 json = {
                     "name": brokerTopicName,
-                    "ID_LIST": brokerSet
+                    "ID_LIST": brokerSet,
+                    "topicID": brokerTopicID
                 }
             )
             # Broker failure
@@ -295,12 +338,20 @@ class Manager(SyncObj):
             brokerList = self.getBrokerList(brokerTopicName)
             brokerID = int(random() * len(brokerList))
             brokerUrl = self.getBrokerUrlFromID(brokerList[brokerID])
+
+            brokerCliID = None
+            if not isCon:
+                brokerCliID = self.getBrokerProdID()
+            else:
+                brokerCliID = self.getBrokerConID()
+
             res = requests.post(
                 brokerUrl + url,
                 json={
                     "topic": topicName,
                     "partition": str(i),
-                    "ID_LIST": brokerList
+                    "ID_LIST": brokerList,
+                    "ID": brokerCliID
                 })
 
             # TODO Broker Failure
