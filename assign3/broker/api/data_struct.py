@@ -155,10 +155,12 @@ class QueueList(SyncObj):
             self.QLock[topicName] = threading.Lock()
 
     def addTopicWrapper(self, topicName, ID_LIST, topicID = None):
+        print("Entered Topic Wrapper")
         self.isReady()
         while not lockManager.tryAcquire(TOPICLOCK, sync = True):
             continue
         topicID = self.getNxtTopicID(sync = True)
+        print("get NExt Topic ID working")
         lockManager.release(TOPICLOCK)
         self.addTopic(topicID, topicName, ID_LIST)
         
@@ -289,7 +291,7 @@ class QueueList(SyncObj):
 
 def createSyncObj(selfAddr, otherAddrs):
     global syncObj
-    syncObj = SyncObj('localhost:%d' % selfAddr, otherAddrs, consumers = [lockManager])
+    syncObj = SyncObj(selfAddr, otherAddrs, consumers = [lockManager])
 
 def setBrokerID(broker_id):
     global BROKER_ID
