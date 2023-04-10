@@ -16,6 +16,8 @@ LOG_path = './LOG.txt'
 
 file = open('LOG_path.txt','w')
 
+PRODUCER = 0
+CONSUMER = 1
 
 class MetaData(SyncObj):
 
@@ -31,10 +33,27 @@ class MetaData(SyncObj):
         # A map from broker ID to broker Metadata
         self.brokers = {}
 
+        # Only stores those clients that subscribe to enitre topic
+        # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
+        # corresponding (prodIDs, partitionNo)
+        # 0 is for producer, 1 is for consumer
+        self.subscription = [{}, {}]
+        # Map from clientID#TopicName to round-robin index
+        self.rrIndex = [{}, {}]
+        self.clientID = [0, 0]
+        self.subscriptionLock = [threading.Lock(), threading.Lock()]
+        self.rrIndexLock = [{}, {}]
+
     @replicated
     def getTopicID(self):
         oldVal = self.TopicID
         self.TopicID += 1
+        return oldVal
+
+    @replicated
+    def getCliendID(self, isCon):
+        oldVal = self.clientID[isCon]
+        self.clientID[isCon] += 1
         return oldVal
 
     @replicated
@@ -64,6 +83,100 @@ class MetaData(SyncObj):
         db.session.add(obj)
         db.session.commit()
         #########################################
+
+    @replicated
+    def addSubscriptionRepl(self, clientID, topicName, clientIDs, isCon):
+        K = clientID + "#" + topicName
+        self.rrIndex[isCon][K] = 0
+        self.rrIndexLock[isCon][K] = threading.Lock()
+        self.subscription[isCon][K] = clientIDs
+
+        ################## DB Updates #####################
+        glob_cli = None
+        if isCon:
+            glob_cli = globalConsumerDB(glob_id = clientID, topic = topicName, rrindex = 0, brokerCnt = len(clientIDs))
+            file.write("db.session.add(globalConsumerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
+        else:
+            glob_cli = globalProducerDB(glob_id = clientID, topic = topicName, rrindex = 0, brokerCnt = len(clientIDs))
+            file.write("db.session.add(globalProducerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
+        local_clis = []
+        for row in clientIDs:
+            broker_id = row[0] 
+            prod_ids = row[1:]
+            
+            for prod_id, partition in prod_ids:
+                if isCon:
+                    local_clis.append(localConsumerDB(local_id = prod_id, broker_id = broker_id, glob_id = clientID, partition = partition))
+                    file.write("db.session.add(localConsumerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
+                else:
+                    local_clis.append(localProducerDB(local_id = prod_id, broker_id = broker_id, glob_id = clientID, partition = partition))
+                    file.write("db.session.add(localProducerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
+    
+        cur_rrindex = random() * len(local_clis)
+        glob_cli.rrindex = cur_rrindex
+        db.session.add(glob_cli)
+        
+        for local_cli in local_clis:
+            db.session.add(local_cli)
+        db.session.commit()
+        ###################################################
+
+    def addSubscription(self, clientIDs, topicName, isCon):
+        self.subscriptionLock[isCon].acquire()
+        clientID = "$" + str(self.getCliendID(isCon, sync = True))
+        self.subscriptionLock[isCon].release()
+       
+        self.addSubscriptionRepl(clientID, topicName, clientIDs, isCon, sync = True)
+        return clientID
+
+    def checkSubscription(self, clientID, topicName, isCon):
+        K = clientID + "#" + topicName
+        if K not in self.subscription[isCon]:
+            return False
+        return True
+
+    @replicated
+    def getUpdRRIndex(self, K, topic, isCon):
+        index = self.rrIndex[isCon][K]
+        self.rrIndex[isCon][K] += 1
+
+        # TODO DB updates
+        obj = TopicDB.query.filter_by(topicName = topic).first()
+        obj.rrindex = obj.rrindex + 1            
+        db.session.commit()
+
+        return index
+    '''
+    Returns the brokerID and prodID to which the message should be sent
+    '''
+    def getRRIndex(self, clientID, topicName, isCon):
+        K = clientID + '#' + topicName
+        self.rrIndexLock[isCon][K].acquire()
+        rrIndex = self.getUpdRRIndex(K, isCon, topicName, sync = True)
+        self.rrIndexLock[isCon][K].release()
+
+        globCli = None
+        if isCon:
+            globCli = globalConsumerDB.query.filter_by(glob_id = clientID, topic = topicName).first()
+        else:
+            globCli = globalProducerDB.query.filter_by(glob_id = clientID, topic = topicName).first()
+
+        # To ensure load balancing
+        localClis = None
+        if isCon:
+            localClis = globCli.localConsumer
+        else:
+            localClis = globCli.localProducer
+        cnt = len(localClis)
+        ind = (rrIndex + int(globCli.rrindex)) % cnt
+
+        localCli = localClis[ind]
+        prodID = localCli.local_id
+        partition = localCli.partition
+        subbedTopicName = self.getSubbedTopicName(topicName, partition)
+
+        return self.getBrokerList(subbedTopicName), prodID, partition
+
 
     # Adds a topic and randomly decides number of paritions
     def addTopic(self, topicName):
@@ -129,235 +242,12 @@ class MetaData(SyncObj):
                 actualPartitions += 1    
         return actualPartitions, PartitionBroker
 
-    def getSubbedTopicName(self, topicName, partition = 0):
-        if topicName not in self.Topics:
-            raise Exception(f"Topicname: {topicName} doesn't exist")
-        ret = str(partition) + '#' + topicName
-        if partition:
-            if ret not in self.PartitionBroker:
-                raise Exception(f"Invalid partition for topic: {topicName}")
-        return ret
 
-    
-    def getBrokerList(self, subbedTopicName):
-        return self.PartitionBroker[subbedTopicName]
-
-    def getTopicsList(self):
-        return self.Topics
-
-
-
-class ProducerMetaData(SyncObj):
-    def __init__(self, cnt = 0, selfNodeAddr = None, partnerNodeAddrs = None):
-        super(ProducerMetaData, self).__init__(selfNodeAddr, partnerNodeAddrs)
-        # Only stores those clients that subscribe to enitre topic
-        # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
-        # corresponding (prodIDs, partitionNo)
-        self.subscription = {}
-        # Map from clientID#TopicName to round-robin index
-        self.rrIndex = {}
-        self.clientCnt = cnt
-        self.subscriptionLock = threading.Lock()
-        self.rrIndexLock = {}
-    
-    def addSubscription(self, clientIDs, topicName):
-        self.subscriptionLock.acquire()
-        clientID = "$" + str(self.clientCnt)
-        self.clientCnt += 1
-        self.subscriptionLock.release()
-
-        K = clientID + "#" + topicName
-       
-        self.rrIndex[K] = 0
-        self.rrIndexLock[K] = threading.Lock()
-        self.subscription[K] = clientIDs
-
-        ################## DB Updates #####################
-        glob_prod = globalProducerDB(glob_id=clientID,topic = topicName,rrindex=0,brokerCnt = len(clientIDs))
-        file.write("db.session.add(globalProducerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
-        local_prods = []
-        for row in clientIDs:
-            broker_id = row[0] 
-            prod_ids = row[1:]
-            
-            for prod_id,partition in prod_ids:
-                local_prods.append(localProducerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID,partition=partition))
-                file.write("db.session.add(localProducerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
-    
-        cur_rrindex = random()*len(local_prods)
-        glob_prod.rrindex = cur_rrindex
-        db.session.add(glob_prod)
-        
-        for local_prod in local_prods:
-            db.session.add(local_prod)
-        db.session.commit()
-        ###################################################
-
-
-        return clientID
-
-    def checkSubscription(self, clientID, topicName):
-        K = clientID + "#" + topicName
-        if K not in self.subscription:
-            return False
-        return True
-
-    '''
-    Returns the brokerID and prodID to which the message should be sent
-    '''
-    def getRRIndex(self, clientID, topicName, rrIndex):
-        globProd = globalProducerDB.query.filter_by(glob_id = clientID, topic = topicName).first()
-
-        # To ensure load balancing
-        cnt = len(globProd.localProducer)
-        ind = (rrIndex + int(globProd.rrindex)) % cnt
-
-        localProd = globProd.localProducer[ind]
-        prodID = localProd.local_id
-        partition = localProd.partition
-        subbedTopicName = TopicMetaData.getSubbedTopicName(topicName, partition)
-
-        return TopicMetaData.getBrokerList(subbedTopicName), prodID, partition
-
-
-class ConsumerMetaData(SyncObj):
-    def __init__(self, cnt = 0, selfNodeAddr = None, partnerNodeAddrs = None):
-        super(ConsumerMetaData, self).__init__(selfNodeAddr, partnerNodeAddrs)
-        # Only stores those clients that subscribe to enitre topic
-        # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
-        # corresponding (conIDs, partitionNo)
-        self.subscription = {}
-        # Map from clientID#TopicName to round-robin index
-        self.rrIndex = {}
-        self.clientCnt = cnt
-        self.subscriptionLock = threading.Lock()
-        self.rrIndexLock = {}
-
-     
-    def addSubscription(self, clientIDs, topicName):
-        self.subscriptionLock.acquire()
-        clientID = "$" + str(self.clientCnt)
-        self.clientCnt += 1
-        self.subscriptionLock.release()
-
-        K = clientID + "#" + topicName
-        self.rrIndex[K] = 0
-        self.rrIndexLock[K] = threading.Lock()
-        self.subscription[K] = clientIDs
-
-        ################## DB Updates #####################
-        glob_prod = globalConsumerDB(glob_id=clientID,topic = topicName,rrindex=0,brokerCnt = len(clientIDs))
-        file.write("db.session.add(globalConsumerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
-        local_prods = []
-        for row in clientIDs:
-            broker_id = row[0] 
-            prod_ids = row[1:]
-            
-            for prod_id,partition in prod_ids:
-                local_prods.append(localConsumerDB(local_id = prod_id,broker_id = broker_id,glob_id = clientID,partition=partition))
-                file.write("db.session.add(localConsumerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
-        db.session.add(glob_prod)
-        for local_prod in local_prods:
-            db.session.add(local_prod)
-        db.session.commit()
-        ###################################################        
-
-
-        return clientID
-
-    def checkSubscription(self, clientID, topicName):
-        K = clientID + "#" + topicName
-        if K not in self.subscription:
-            return False
-        return True
-
-    def getRRIndex(self, clientID, topicName, topic_rrindex): #For now no need to update db here
-        if topicName not in [obj.topicName for obj in TopicDB.query.all()]:
-            raise Exception(f"Topic {topicName} doesn't exist")
-        cons_rrindex = globalConsumerDB.query.filter_by(glob_id = clientID, topic = topicName).first().rrindex
-        globCons = globalConsumerDB.query.filter_by(glob_id = clientID, topic = topicName).first()
-
-        #To ensure load balancing
-        cnt = len(globCons.localConsumer)
-        ind = (cons_rrindex + topic_rrindex) % (cnt)
-
-        localCons = globCons.localConsumer[ind]
-        ConsID= localCons.local_id
-        partition = localCons.partition
-        subbedTopicName = TopicMetaData.getSubbedTopicName(topicName, partition)
-        
-        return TopicMetaData.getBrokerList(subbedTopicName), ConsID, partition
-
-class Manager:
-    
-    topicMetaData = TopicMetaData()
-    consumerMetaData = ConsumerMetaData()
-    producerMetaData = ProducerMetaData()
-    lock = threading.Lock()
-    # A map from broker ID to broker Metadata
-    brokers = {}
-    X = 0
-
-    
-
-        # for i in range(numPartitions):
-        #     all_addrs = []
-        #     objs= []
-        #     for j in range(replFactor):
-        #         # TODO assign the broker url
-        #         brokerID = brokerList[i*replFactor+j]
-        #         brokerTopicName = str(actualPartitions + 1) + '#' + topicName
-        #         url = cls.brokers[brokerID].url.split(":")[0]+":"+str(cls.broker[brokerID].port_cnt)
-        #         cls.broker[brokerID].port_cnt += 1
-        #         BrokerMetaDataDB.query.filter_by(broker_id=brokerID).update({"port_cnt":cls.broker[brokerID].port_cnt})
-        #         all_addrs.append(url)
-        #         obj = ReplicationDB(
-        #             replica_id=j,
-        #             topic=topicName,
-        #             partition=i,
-        #             url=url
-        #         )
-        #         objs.append(obj)
-        #         #url = cls.brokers[brokerID].url
-        #     for j in range(replFactor):
-        #         for k in range(replFactor):
-        #             if j != k:
-        #                 objs[j].replicas.append(objs[k])
-        #         master = all_addrs[j]
-        #         slave = all_addrs[:j] + all_addrs[j+1:]
-        #         res = requests.post(str(url) + "/topics", 
-        #             json = {
-        #                 "name": brokerTopicName,
-        #                 "master":master,
-        #                 "slave":slave
-        #             }
-        #         )
-
-        #         # Post request to the broker to create the topic
-
-        #         # Broker failure (TODO: what to do?)
-        #         if res.status_code != 200:
-        #             requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
-        #         elif(res.json().get("status") == "Success"):
-        #             PartitionBroker[brokerTopicName] = brokerID
-        #             actualPartitions += 1  
-        #     db.session.add_all(objs)
-        # db.session.commit()  
-        # return actualPartitions, PartitionBroker
-
-    @classmethod
-    def getBrokerList(cls, topicName, partition):
-        subbedTopicName = cls.topicMetaData.getSubbedTopicName(topicName, partition)
-        brokerList = cls.topicMetaData.getBrokerList(subbedTopicName)
-        return brokerList
-
-
-    @classmethod
-    def registerClientForAllPartitions(cls, url, topicName, isProducer):
-        if topicName not in Manager.topicMetaData.Topics.keys():
+    def registerClientForAllPartitions(self, url, topicName, isProducer):
+        if topicName not in self.Topics.keys():
             raise Exception(f"Topic {topicName} doesn't exist")
 
-        numPartitions = Manager.topicMetaData.Topics[topicName][1]
+        numPartitions = self.Topics[topicName][1]
         IDs = []
         brokerMap = {}
         for i in range(1, numPartitions + 1):
@@ -416,6 +306,7 @@ class Manager:
                 broker.lock.release()
             else:
                 requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(broker.brokerID)})
+
     def checkManagerHeartBeat():
         with app.app_context():
             for obj in ManagerDB.query.all():
@@ -424,6 +315,36 @@ class Manager:
                     pass
                 else:
                     requests.get(APP_URL + "/crash_recovery_manager", params = {'managerID': str(obj.id)})
+
+    def getSubbedTopicName(self, topicName, partition = 0):
+        if topicName not in self.Topics:
+            raise Exception(f"Topicname: {topicName} doesn't exist")
+        ret = str(partition) + '#' + topicName
+        if partition:
+            if ret not in self.PartitionBroker:
+                raise Exception(f"Invalid partition for topic: {topicName}")
+        return ret
+
+
+    def getBrokerList(self, topicName, partition):
+        subbedTopicName = self.getSubbedTopicName(topicName, partition)
+        return self.PartitionBroker[subbedTopicName]
+
+    def getTopicsList(self):
+        return self.Topics
+
+
+
+
+class Manager:
+    
+    topicMetaData = TopicMetaData()
+    consumerMetaData = ConsumerMetaData()
+    producerMetaData = ProducerMetaData()
+    lock = threading.Lock()
+    # A map from broker ID to broker Metadata
+    brokers = {}
+    X = 0
         
 
 class BrokerMetaData:
