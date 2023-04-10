@@ -28,9 +28,9 @@ from api.data_struct import getQObj
 def create_topic():
     topic_name : str = request.get_json().get('name')
     ID_LIST = [str(x) for x in request.get_json().get('ID_LIST')]
-
+    topic_id = request.get_json().get('topicID')
     try :
-        getQObj().addTopicWrapper(topic_name, ID_LIST)
+        getQObj().addTopicWrapper(topic_name, ID_LIST, topic_id)
         return {
             "status" : "Success" , 
             "message" : 'Topic {} created successfully'.format(topic_name)
@@ -104,9 +104,13 @@ def register_consumer():
     topicName = request.get_json().get("topic")
     partition = request.get_json().get("partition")
     topic = str(partition) + '#' + topicName
+
     ID_LIST = [str(x) for x in request.get_json().get('ID_LIST')]
+
+    conID = request.get_json().get('ID')
+
     try:
-        cid = getQObj().registerConsumer(topic, ID_LIST)
+        cid = getQObj().registerConsumer(topic, ID_LIST, conID)
         return {
             "status": "Success",
             "consumer_id": cid
@@ -141,9 +145,13 @@ def register_producer():
     topicName = request.get_json().get("topic")
     partition = request.get_json().get("partition")
     topic = str(partition) + '#' + topicName
+
     ID_LIST = [str(x) for x in request.get_json().get('ID_LIST')]
+
+    prodID = request.get_json().get('ID')
+
     try:
-        pid = getQObj().registerProducer(topic, ID_LIST)
+        pid = getQObj().registerProducer(topic, ID_LIST, prodID)
         return {
             "status":"Success",
             "producer_id":pid
@@ -183,9 +191,13 @@ def enqueue():
         message: str = request.get_json().get('message')
         print(topicName,partition,producer_id,message)
         topic = str(partition) + '#' + topicName
+
         ID_LIST = [str(x) for x in request.get_json().get('ID_LIST')]
 
-        getQObj().enqueue(topic, producer_id , message, ID_LIST)
+        msgID = request.get_json().get('msgID')
+
+
+        getQObj().enqueue(topic, producer_id , message, ID_LIST, msgID)
         return {
             "status": "Success",
             "message": ""
@@ -284,28 +296,6 @@ def isAlive():
         "status": "Success"
     }
 
-@ app.route("/raft", methods=['POST'])
-def set_raft():
-    
-
-    try :
-        master : str = request.get_json().get('master')
-        slave = request.get_json().get('slave')
-        from api.data_struct import createQObj
-        print(master,slave)
-        createQObj(master, slave)
-        from api.data_struct import QObj
-        while QObj._getLeader() is None:
-            continue
-        return {
-            "status" : "Success" 
-        }
-    
-    except Exception as e: 
-        return {
-            "status" : "Failure" ,
-            "message" : str(e)
-        }
 
 
 

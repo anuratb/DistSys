@@ -1,10 +1,10 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 import os
-import threading
+import threading, time
 import json
 import dotenv
-#from api.data_struct import createSyncObj, createQObj
+from data_struct import createQObj
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@10.102.68.15:5432/anurat'
 
@@ -57,18 +57,20 @@ print(os.environ["SELF_ADDR"],os.environ["SLAVE_ADDR"].split('$'))
 createQObj(os.environ["SELF_ADDR"],os.environ["SLAVE_ADDR"].split('$'))
 from api.data_struct import QObj
 while QObj._getLeader() is None:
+    time.sleep(1)
+    print("No leader")
     continue
-from api.data_struct import createSyncObj
+
 master_ip,master_port = os.environ["SELF_ADDR"].split(':')
 master_port = int(master_port)+1
 slave = os.environ["SLAVE_ADDR"].split('$')
 slave = [itr.split(':') for itr in slave]
 slave_ip = [itr[0] for itr in slave]
 slave_port = [int(itr[1])+1 for itr in slave]
-createSyncObj(str(master_ip)+':'+str(master_port),[str(itr[0])+':'+str(itr[1]) for itr in zip(slave_ip,slave_port)])
-from api.data_struct import syncObj
-while syncObj._getLeader() is None:
-    continue
+# createSyncObj(str(master_ip)+':'+str(master_port),[str(itr[0])+':'+str(itr[1]) for itr in zip(slave_ip,slave_port)])
+# from api.data_struct import syncObj
+# while syncObj._getLeader() is None:
+#     continue
 
 
 from api.data_struct import Queue,QueueList
