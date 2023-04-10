@@ -1,10 +1,10 @@
 import threading, time
-from api import db
+from api import db,app
 from api.models import QueueDB,Topics,Producer,Consumer
 from pysyncobj import SyncObj, replicated
 from pysyncobj.batteries import ReplLockManager
 import os
-BROKER_ID = os.environ.get('BROKER_ID')
+BROKER_ID = str(os.environ.get('BROKER_ID'))
 
 lockManager = ReplLockManager(autoUnlockTime = 75) # Lock will be released if connection dropped for more than 75 seconds
 syncObj = None
@@ -28,9 +28,13 @@ class Queue:
         
  
     def subscribeProducer(self, prodID):
+        if prodID in self.producerList:
+            return
         self.producerList.append(prodID)
 
         # TODO: check if the data is already in database
+        if(len(Producer.query.filter_by(id=prodID).all())>0):
+            return
         obj = Producer(id = prodID)
         cur = Topics.query.filter_by(id = self.topicID).first()
         cur.producers.append(obj)
@@ -39,9 +43,13 @@ class Queue:
 
 
     def subscribeConsumer(self, conID):
+        if conID in self.consumerList:
+            return
         self.consumerList.append(conID)
 
         # TODO: check if the data is already in database
+        if(len(Consumer.query.filter_by(id=conID).all())>0):
+            return
         obj = Consumer(id = conID, offset = 0)
         cur = Topics.query.filter_by(id = self.topicID).first()
         cur.consumers.append(obj)
@@ -56,6 +64,7 @@ class Queue:
         if offset < len(self.queue):
             self.Offset[conID] += 1
             # TODO: check if the data is already in database
+
             obj = Consumer.query.filter_by(id = conID).first()
             obj.offset += 1
             db.session.commit()
@@ -70,6 +79,8 @@ class Queue:
         self.queue.append([nid, msg])
         
         # TODO: check if the data is already in database
+        if(len(QueueDB.query.filter_by(id=nid,value=msg).all())>0):
+            return
         obj = QueueDB(id = nid,value = msg)
         db.session.add(obj)
         topic = Topics.query.filter_by(id = self.topicID).first()
@@ -147,16 +158,23 @@ class QueueList(SyncObj):
 
     @replicated
     def addTopic(self, topicID, topicName, ID_LIST):
-        if BROKER_ID in ID_LIST:
-            # TODO: check if the data is already in database
-            db.session.add(Topics(id = topicID, value = topicName))
-            db.session.commit()
-            self.QList[topicName] = Queue(topicID, topicName)
-            self.QLock[topicName] = threading.Lock()
+        print(BROKER_ID,ID_LIST)
+        if str(BROKER_ID )in ID_LIST:
+            with app.app_context():
+                # TODO: check if the data is already in database
+                print("Adding Topic")
+                if(len(Topics.query.filter_by(id=topicID,value=topicName).all())>0):
+                    return
+                db.session.add(Topics(id = topicID, value = topicName))
+                db.session.commit()
+                self.QList[topicName] = Queue(topicID, topicName)
+                self.QLock[topicName] = threading.Lock()
+                print("Added Topic")
+
 
     def addTopicWrapper(self, topicName, ID_LIST, topicID = None):
         print("Entered Topic Wrapper")
-        self.isReady()
+        self.isReady_()
         while not lockManager.tryAcquire(TOPICLOCK, sync = True):
             continue
         print("Entered Lock Manager")
@@ -168,7 +186,8 @@ class QueueList(SyncObj):
         return topicID
 
     def listTopics(self):
-        self.isReady()
+        self.isReady_()
+        
         return [topicName for topicName in self.QList.keys()]
 
     def isValidTopic(self, topicName):
@@ -190,7 +209,7 @@ class QueueList(SyncObj):
             self.QList[topicName].subscribeProducer(topicName, prodID)
 
     def registerConsumer(self, topicName, ID_LIST):
-        self.isReady()
+        self.isReady_()
         if not self.isValidTopic(topicName):
             raise Exception('Topicname: {} does not exists'.format(topicName))
 
@@ -206,7 +225,7 @@ class QueueList(SyncObj):
         return nid
 
     def registerProducer(self, topicName, ID_LIST):
-        self.isReady()
+        self.isReady_()
         if not self.isValidTopic(topicName):
             raise Exception('Topicname: {} does not exists'.format(topicName))
         
@@ -227,7 +246,7 @@ class QueueList(SyncObj):
             self.QList[topicName].addMessage(msgID, msg, ID_LIST)
 
     def enqueue(self, topicName, prodID, msg, ID_LIST):
-        self.isReady()
+        self.isReady_()
         #print("Enqueueing: ", topicName, prodID, msg)
         #print(cls.topics.get(topicName).producerList)
       
@@ -257,7 +276,7 @@ class QueueList(SyncObj):
             return index
 
     def dequeue(self, topicName, conID, ID_LIST):
-        self.isReady()
+        self.isReady_()
         # Check if topic exists
         if not self.isValidTopic(topicName):
             raise Exception('Topicname: {} does not exists'.format(topicName))
@@ -277,7 +296,7 @@ class QueueList(SyncObj):
             return msg
 
     def getSize(self, topicName, conID):
-        self.isReady()
+        self.isReady_()
         if not self.isValidTopic(topicName):
             raise Exception('Topicname: {} does not exists'.format(topicName))
         # Check if user is registered for the topic
@@ -285,7 +304,7 @@ class QueueList(SyncObj):
             raise Exception("Error: Invalid producer ID!")
         return self.QList[topicName].getRemainingSize(conID)
         
-    def isReady(self):
+    def isReady_(self):
         while not QObj.isReady():
             time.sleep(1)
             print(f"BrokerID-{BROKER_ID}: Not ready Yet")

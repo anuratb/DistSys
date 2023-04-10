@@ -71,6 +71,53 @@ createSyncObj(str(master_ip)+':'+str(master_port),[str(itr[0])+':'+str(itr[1]) f
 from api.data_struct import syncObj
 while syncObj._getLeader() is None:
     continue
+
+
+from api.data_struct import Queue,QueueList
+
+from api.models import QueueDB,Topics,Producer,Consumer
+
+def load_from_db():
+    conID = set()
+    for cons in Consumer.query.all():
+        conID.add(cons.id)
+    conID = list(conID)
+    for id in conID:
+        QObj.offsetLock[conID] = threading.Lock()
+    for topic in Topics.query.all():
+        QObj.QList[topic.value] = Queue(topic.id,topic.value)
+        QObj.QLock[topic.value] = threading.Lock()
+        
+        #Queue.topics[topic.value] = TopicNode(topic.id)
+        #Queue.queue[topic.id] = []
+        #Queue.locks[topic.id] = threading.Lock()
+        cur = topic.start_ind
+        lst = topic.end_ind
+        #Construct the queue for the given topic
+        while(cur is not None):
+            obj = QueueDB.query.filter_by(id=cur).first()
+            #TODO
+           # Queue.queue[topic.id].append([obj.id,obj.value])
+            if(cur==lst):break
+            cur = obj.nxt_id
+        #construct the producers
+        for producer in topic.producers:
+            pass
+            #Queue.topics[topic.value].subscribeProducer(producer.id)
+        #construct the consumers
+        for consumer in topic.consumers:
+            pass
+            #Queue.topics[topic.value].subscribeConsumer(consumer.id)
+            #Queue.consumers[consumer.id] = [consumer.offset,threading.Lock()]
+    #Queue.cntProd = Producer.query.count()
+    #Queue.cntCons = Consumer.query.count()
+    #Queue.cntMessage = QueueDB.query.count()
+    #print(Queue.queue)
+
+    return
+
+
+
 '''
 from api.data_struct import TopicNode,Queue
 from api.models import QueueDB,Topics,Producer,Consumer
@@ -106,7 +153,7 @@ def load_from_db():
 
 
 app.app_context().push()
-
+from api.data_struct import Queue
 #Queue.clear()
 db.drop_all()
 db.create_all()
