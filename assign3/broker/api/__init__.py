@@ -1,7 +1,7 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 import os
-import threading
+import threading, time
 import json
 #from api.data_struct import createSyncObj, createQObj
 
@@ -50,9 +50,14 @@ def create_app(test_config = None):
 
 app, db = create_app('./config.json')
 from api.data_struct import createQObj
-createQObj(os.environ["SELF_ADDR"],os.environ["SLAVE_ADDR"].split('$'))
+selfAddr = os.environ["SELF_ADDR"]
+otherAddrs = os.environ["SLAVE_ADDR"].split('$')
+print(selfAddr, otherAddrs)
+createQObj(selfAddr, otherAddrs)
 from api.data_struct import QObj
 while QObj._getLeader() is None:
+    time.sleep(1)
+    print("No leader")
     continue
 '''
 from api.data_struct import TopicNode,Queue
