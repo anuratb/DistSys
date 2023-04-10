@@ -16,7 +16,7 @@ MSGLOCK = 'msglock'
 TOPICLOCK = 'topiclock'
 
 
-class Queue(SyncObj):
+class Queue:
     def __init__(self, topicID_, topicName_):
         self.queue = []
         # Key: Consumer ID, Value: (offset in the topic queue)
@@ -158,7 +158,6 @@ class QueueList(SyncObj):
 
     @replicated
     def addTopic(self, topicID, topicName, ID_LIST):
-
         print(BROKER_ID,ID_LIST)
         if str(BROKER_ID )in ID_LIST:
             with app.app_context():
@@ -172,6 +171,7 @@ class QueueList(SyncObj):
                 self.QLock[topicName] = threading.Lock()
                 print("Added Topic")
 
+
     def addTopicWrapper(self, topicName, ID_LIST, topicID = None):
         print("Entered Topic Wrapper")
         self.isReady_()
@@ -181,7 +181,7 @@ class QueueList(SyncObj):
         topicID = self.getNxtTopicID(sync = True)
         print("get NExt Topic ID working")
         lockManager.release(TOPICLOCK)
-        self.addTopic(topicID, topicName, ID_LIST)
+        self.addTopic(topicID, topicName, ID_LIST, sync = True)
         
         return topicID
 
@@ -243,7 +243,7 @@ class QueueList(SyncObj):
     @replicated
     def addMessage(self, topicName, msgID, msg, ID_LIST):
         if BROKER_ID in ID_LIST:
-            self.QList[topicName].addMessage(msgID, msg, ID_LIST, sync = True)
+            self.QList[topicName].addMessage(msgID, msg, ID_LIST)
 
     def enqueue(self, topicName, prodID, msg, ID_LIST):
         self.isReady_()

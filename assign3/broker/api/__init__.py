@@ -1,10 +1,10 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 import os
-import threading
+import threading, time
 import json
 import dotenv
-#from api.data_struct import createSyncObj, createQObj
+from data_struct import createSyncObj, createQObj
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@10.102.68.15:5432/anurat'
 
@@ -57,8 +57,10 @@ print(os.environ["SELF_ADDR"],os.environ["SLAVE_ADDR"].split('$'))
 createQObj(os.environ["SELF_ADDR"],os.environ["SLAVE_ADDR"].split('$'))
 from api.data_struct import QObj
 while QObj._getLeader() is None:
+    time.sleep(1)
+    print("No leader")
     continue
-from api.data_struct import createSyncObj
+
 master_ip,master_port = os.environ["SELF_ADDR"].split(':')
 master_port = int(master_port)+1
 slave = os.environ["SLAVE_ADDR"].split('$')
