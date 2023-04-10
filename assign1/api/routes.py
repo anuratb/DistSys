@@ -2,7 +2,7 @@
 from flask import   request, jsonify
 from api import app,db,cnt
 import flask, requests
-# from data_struct import getObj
+from data_struct import getObj
 '''
 Method: POST
 Endpoint: /topics
@@ -49,19 +49,7 @@ import time
 
 #     return "Success"
     
-<<<<<<< HEAD
-    master = request.get_json().get("master")
-    slave = request.get_json().get("slave")
-    print(master,slave)
-    obj = Counter(master,slave)
-    while obj._getLeader() is None :
-        continue
-    print(obj.getStatus())
-    #obj.incr()
-    #print(f"Output: {obj.cnt}")
-    return "Success"
-=======
->>>>>>> f0d0017731f19c224ac67ce22546721e96a55644
+
 @app.route("/incr",methods=["GET"])
 def incr():
     # while obj._getLeader() is None :

@@ -3,10 +3,10 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 import os
-from data_struct import setObj
+from api.data_struct import setObj
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 cnt = 0
-setObj("localhost:6125", ["localhost:6124"])
+setObj("localhost:6124", ["localhost:6125"])
 app = Flask(__name__)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = '5791628bb0b13ce0c676dfde280ba245'
@@ -14,7 +14,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
 db = SQLAlchemy(app)
 
 
-from data_struct import getObj
+from api.data_struct import getObj
 '''
 Method: POST
 Endpoint: /topics
