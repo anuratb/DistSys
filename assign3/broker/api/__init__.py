@@ -3,11 +3,13 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import threading
 import json
+import dotenv
 #from api.data_struct import createSyncObj, createQObj
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@10.102.68.15:5432/anurat'
 
-
+dotenv_file = dotenv.find_dotenv()
+dotenv.load_dotenv(dotenv_file)
 
 
 def create_app(test_config = None):
@@ -50,6 +52,8 @@ def create_app(test_config = None):
 
 app, db = create_app('./config.json')
 from api.data_struct import createQObj
+#print(os.environ)
+print(os.environ["SELF_ADDR"],os.environ["SLAVE_ADDR"].split('$'))
 createQObj(os.environ["SELF_ADDR"],os.environ["SLAVE_ADDR"].split('$'))
 from api.data_struct import QObj
 while QObj._getLeader() is None:

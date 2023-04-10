@@ -159,6 +159,7 @@ class QueueList(SyncObj):
         self.isReady()
         while not lockManager.tryAcquire(TOPICLOCK, sync = True):
             continue
+        print("Entered Lock Manager")
         topicID = self.getNxtTopicID(sync = True)
         print("get NExt Topic ID working")
         lockManager.release(TOPICLOCK)
