@@ -6,14 +6,7 @@ from pysyncobj.batteries import ReplLockManager
 import os
 BROKER_ID = str(os.environ.get('BROKER_ID'))
 
-lockManager = ReplLockManager(autoUnlockTime = 75) # Lock will be released if connection dropped for more than 75 seconds
-syncObj = None
 QObj = None
-
-CONLOCK = 'conlock'
-PRODLOCK = 'prodlock'
-MSGLOCK = 'msglock'
-TOPICLOCK = 'topiclock'
 
 
 class Queue:
@@ -127,35 +120,6 @@ class QueueList(SyncObj):
         # ConsumerID -> Lock
         self.offsetLock = {}
 
-        self.conID = 0
-        self.prodID = 0
-        self.msgID = 0
-        self.topicID = 0
-
-    @replicated
-    def getNxtConID(self):
-        val = self.conID
-        self.conID += 1
-        return val
-
-    @replicated
-    def getNxtProdID(self):
-        val = self.prodID
-        self.prodID += 1
-        return val
-    
-    @replicated
-    def getNxtMsgID(self):
-        val = self.msgID
-        self.msgID += 1
-        return val
-    
-    @replicated
-    def getNxtTopicID(self):
-        val = self.topicID
-        self.topicID += 1
-        return val
-
     @replicated
     def addTopic(self, topicID, topicName, ID_LIST):
         print(BROKER_ID,ID_LIST)
@@ -172,15 +136,12 @@ class QueueList(SyncObj):
                 print("Added Topic")
 
 
-    def addTopicWrapper(self, topicName, ID_LIST, topicID = None):
+    def addTopicWrapper(self, topicName, ID_LIST, topicID_):
         print("Entered Topic Wrapper")
         self.isReady_()
-        while not lockManager.tryAcquire(TOPICLOCK, sync = True):
-            continue
         print("Entered Lock Manager")
-        topicID = self.getNxtTopicID(sync = True)
+        topicID = topicID_
         print("get NExt Topic ID working")
-        lockManager.release(TOPICLOCK)
         self.addTopic(topicID, topicName, ID_LIST, sync = True)
         
         return topicID
@@ -208,31 +169,25 @@ class QueueList(SyncObj):
         if BROKER_ID in ID_LIST:
             self.QList[topicName].subscribeProducer(topicName, prodID)
 
-    def registerConsumer(self, topicName, ID_LIST):
+    def registerConsumer(self, topicName, ID_LIST, conID):
         self.isReady_()
         if not self.isValidTopic(topicName):
             raise Exception('Topicname: {} does not exists'.format(topicName))
 
-        while not lockManager.tryAcquire(CONLOCK, sync = True):
-            continue
-        nid = self.getNxtConID(sync = True)
-        lockManager.release(CONLOCK)
 
+        nid = conID
         self.QLock[topicName].acquire()
         self.addConsumer(topicName, nid, ID_LIST, sync = True)
         self.QLock[topicName].release()
 
         return nid
 
-    def registerProducer(self, topicName, ID_LIST):
+    def registerProducer(self, topicName, ID_LIST, prodID):
         self.isReady_()
         if not self.isValidTopic(topicName):
             raise Exception('Topicname: {} does not exists'.format(topicName))
         
-        while not lockManager.tryAcquire(PRODLOCK, sync = True):
-            continue
-        nid = self.getNxtProdID(sync = True)
-        lockManager.release(PRODLOCK)
+        nid = prodID
 
         self.QLock[topicName].acquire()
         self.addProducer(topicName, nid, ID_LIST, sync = True)
@@ -245,7 +200,7 @@ class QueueList(SyncObj):
         if BROKER_ID in ID_LIST:
             self.QList[topicName].addMessage(msgID, msg, ID_LIST)
 
-    def enqueue(self, topicName, prodID, msg, ID_LIST):
+    def enqueue(self, topicName, prodID, msg, ID_LIST, msgID):
         self.isReady_()
         #print("Enqueueing: ", topicName, prodID, msg)
         #print(cls.topics.get(topicName).producerList)
@@ -260,10 +215,7 @@ class QueueList(SyncObj):
         if not self.QList[topicName].isProdRegistered(prodID):
             raise Exception("Error: Invalid producer ID!")
 
-        while not lockManager.tryAcquire(MSGLOCK, sync = True):
-            continue
-        nid = self.getNxtMsgID(sync = True)
-        lockManager.release(MSGLOCK)
+        nid = msgID
 
         self.QLock[topicName].acquire()
         self.addMessage(topicName, nid, msg, ID_LIST, sync = True)
@@ -309,9 +261,6 @@ class QueueList(SyncObj):
             time.sleep(1)
             print(f"BrokerID-{BROKER_ID}: Not ready Yet")
 
-def createSyncObj(selfAddr, otherAddrs):
-    global syncObj
-    syncObj = SyncObj(selfAddr, otherAddrs, consumers = [lockManager])
 
 def setBrokerID(broker_id):
     global BROKER_ID
@@ -321,6 +270,6 @@ def createQObj(selfAddr, otherAddrs):
     global QObj
     QObj = QueueList(selfAddr, otherAddrs)
 
-def getQObj():
+def getQObj() -> QueueList:
     return QObj
     

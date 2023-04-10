@@ -1,0 +1,4 @@
+Q.createTopic("News")
+prod1 = Q.createProducer(['News'])
+prod1.enqueue("Cat4",'News')
+cons1 = Q.createConsumer(["News"])
