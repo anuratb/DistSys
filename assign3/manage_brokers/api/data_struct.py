@@ -28,11 +28,7 @@ class TopicMetaData:
         self.PartitionBroker = {}
         self.lock = threading.Lock()
 
-        #No DB updates as assuming broker already created
-
-
     # Adds a topic and randomly decides number of paritions
-    
     def addTopic(self, topicName):
         # TODO get the current number of brokers numBrokers
         numBrokers = len(Manager.brokers)
@@ -104,9 +100,8 @@ class TopicMetaData:
     def getTopicsList(self):
         return self.Topics
 
-class ProducerMetaData(SyncObj):
-    def __init__(self, cnt = 0, selfNodeAddr = None, partnerNodeAddrs = None):
-        super(ProducerMetaData, self).__init__(selfNodeAddr, partnerNodeAddrs)
+class ProducerMetaData():
+    def __init__(self, cnt = 0):
         # Only stores those clients that subscribe to enitre topic
         # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
         # corresponding (prodIDs, partitionNo)
@@ -116,7 +111,7 @@ class ProducerMetaData(SyncObj):
         self.clientCnt = cnt
         self.subscriptionLock = threading.Lock()
         self.rrIndexLock = {}
-    
+
     def addSubscription(self, clientIDs, topicName):
         self.subscriptionLock.acquire()
         clientID = "$" + str(self.clientCnt)
@@ -177,9 +172,8 @@ class ProducerMetaData(SyncObj):
         return TopicMetaData.getBrokerList(subbedTopicName), prodID, partition
 
 
-class ConsumerMetaData(SyncObj):
-    def __init__(self, cnt = 0, selfNodeAddr = None, partnerNodeAddrs = None):
-        super(ConsumerMetaData, self).__init__(selfNodeAddr, partnerNodeAddrs)
+class ConsumerMetaData():
+    def __init__(self, cnt = 0):
         # Only stores those clients that subscribe to enitre topic
         # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
         # corresponding (conIDs, partitionNo)
@@ -190,7 +184,6 @@ class ConsumerMetaData(SyncObj):
         self.subscriptionLock = threading.Lock()
         self.rrIndexLock = {}
 
-     
     def addSubscription(self, clientIDs, topicName):
         self.subscriptionLock.acquire()
         clientID = "$" + str(self.clientCnt)
@@ -255,6 +248,48 @@ class Manager:
     brokers = {}
     X = 0
 
+    brokerTopicID = 0
+    brokerTopicIDLock = threading.Lock()
+    msgID = 0
+    msgIDLock = threading.Lock()
+    brokerConID = 0
+    brokerConIDLock = threading.Lock()
+    brokerProdID = 0
+    brokerProdIDLock = threading.Lock()
+
+    @classmethod
+    def getBrokerProdID(cls):
+        cls.brokerProdIDLock.acquire()
+        oldVal = cls.brokerProdID
+        cls.brokerProdID += 1
+        cls.brokerProdIDLock.release()
+        return oldVal
+
+    @classmethod
+    def getBrokerConID(cls):
+        cls.brokerConIDLock.acquire()
+        oldVal = cls.brokerConID
+        cls.brokerConID += 1
+        cls.brokerConIDLock.release()
+        return oldVal
+
+    #No DB updates as assuming broker already created
+    @classmethod
+    def getBrokerTopicID(cls):
+        cls.brokerTopicIDLock.acquire()
+        oldVal = cls.brokerTopicID
+        cls.brokerTopicID += 1
+        cls.brokerTopicIDLock.release()
+        return oldVal
+
+    @classmethod
+    def getMsgID(cls):
+        cls.msgIDLock.acquire()
+        oldVal = cls.msgID
+        cls.msgID += 1
+        cls.msgIDLock.release()
+        return oldVal
+        
     @classmethod
     def getRandomBrokers(cls):
         # Return a random set of replfactor many brokerIDs
@@ -283,11 +318,13 @@ class Manager:
             brokerTopicName = str(actualPartitions + 1) + '#' + topicName
 
             url = cls.brokers[brokerSet[0]].url
+            brokerTopicID = cls.getBrokerTopicID()
             # Send Post request to any one of the replicas
             res = requests.post(str(url) + "/topics", 
                 json = {
                     "name": brokerTopicName,
-                    "ID_LIST": brokerSet
+                    "ID_LIST": brokerSet,
+                    "topicID": brokerTopicID
                 }
             )
             # Broker failure
@@ -363,12 +400,18 @@ class Manager:
             brokerList = cls.topicMetaData.getBrokerList(brokerTopicName)
             brokerID = int(random() * len(brokerList))
             brokerUrl = cls.getBrokerUrlFromID(brokerList[brokerID])
+            brokerCliID = None
+            if isProducer:
+                brokerCliID = cls.getBrokerProdID()
+            else:
+                brokerCliID = cls.getBrokerConID()
             res = requests.post(
                 brokerUrl + url,
                 json={
                     "topic": topicName,
                     "partition": str(i),
-                    "ID_LIST": brokerList
+                    "ID": brokerCliID,
+                    "ID_LIST": brokerList,
                 })
 
             # TODO Broker Failure

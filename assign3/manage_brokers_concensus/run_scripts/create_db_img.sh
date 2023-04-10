@@ -1,0 +1,7 @@
+DB_USER=$1
+DB_PASS=$2
+DOCKER_PORT=$3
+CONTAINER_NAME=$4
+POSTGRES_DEFAULT_PORT=5432
+
+docker run --name $CONTAINER_NAME --expose $POSTGRES_DEFAULT_PORT -e POSTGRES_PASSWORD=$DB_PASS -e POSTGRES_USER=$DB_USER -p $DOCKER_PORT:$POSTGRES_DEFAULT_PORT -v /home/anindya/data_cache:/var/lib/postgresql/data -d   postgres

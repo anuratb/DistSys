@@ -16,10 +16,20 @@ LOG_path = './LOG.txt'
 
 file = open('LOG_path.txt','w')
 
-PRODUCER = 0
-CONSUMER = 1
+manager = None
 
-class MetaData(SyncObj):
+class BrokerMetaData:
+    def __init__(self, DB_URI = '', url = '', name = '', brokerID = 0,docker_id = 0):
+        self.DB_URI = DB_URI
+        self.url = url
+        self.docker_name = name
+        self.last_beat = time.monotonic()
+        self.brokerID = brokerID
+        self.docker_id = docker_id
+        self.lock = threading.Lock()
+        self.port = 8000 #initial port for raft
+
+class Manager(SyncObj):
 
     def __init__(self, selfAddr, otherAddrs):
         super().__init__(selfAddr, otherAddrs) 
@@ -32,6 +42,9 @@ class MetaData(SyncObj):
         
         # A map from broker ID to broker Metadata
         self.brokers = {}
+        self.brokerID = 0
+        self.brokerLock = threading.Lock()
+        self.Managers = {}
 
         # Only stores those clients that subscribe to enitre topic
         # Map from clienID#TopicName to an array X. X[i] contains an array containing brokerID followed by
@@ -44,6 +57,7 @@ class MetaData(SyncObj):
         self.subscriptionLock = [threading.Lock(), threading.Lock()]
         self.rrIndexLock = [{}, {}]
 
+
     @replicated
     def getTopicID(self):
         oldVal = self.TopicID
@@ -55,6 +69,32 @@ class MetaData(SyncObj):
         oldVal = self.clientID[isCon]
         self.clientID[isCon] += 1
         return oldVal
+
+    @replicated
+    def getBrokerID(self):
+        oldVal = self.brokerID
+        self.brokerID += 1
+        return oldVal
+
+    @replicated
+    def addBroker(self, db_uri, url, curr_id, docker_id):
+        brokerObj = BrokerMetaData(db_uri, url, "broker" + str(curr_id), curr_id, docker_id)
+        self.brokers[brokerObj.brokerID] = brokerObj
+        ################# DB UPDATES ########################
+        obj = BrokerMetaDataDB(
+            broker_id = brokerObj.brokerID, 
+            url = brokerObj.url,
+            db_uri = brokerObj.DB_URI,
+            docker_name = brokerObj.docker_name,
+            last_beat = brokerObj.last_beat,
+            docker_id = brokerObj.docker_id,
+        )
+        file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.url,broker_obj.DB_URI,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
+        db.session.add(obj)
+        db.session.commit()
+        #####################################################
+
+        return brokerObj
 
     @replicated
     def addTopicRepl(self, topicID, topicName, numPartitions, assignedBrokers):
@@ -191,7 +231,7 @@ class MetaData(SyncObj):
         if topicName in self.Topics:
             self.lock.release()
             raise Exception(f'Topicname: {topicName} already exists')
-        topicID = self.getTopicID()
+        topicID = self.getTopicID(sync = True)
         # Choose the brokers
         numPartitions, assignedBrokers = Manager.assignBrokers(topicName, numPartitions)
         # All Brokers are down
@@ -243,7 +283,7 @@ class MetaData(SyncObj):
         return actualPartitions, PartitionBroker
 
 
-    def registerClientForAllPartitions(self, url, topicName, isProducer):
+    def registerClientForAllPartitions(self, url, topicName, isCon):
         if topicName not in self.Topics.keys():
             raise Exception(f"Topic {topicName} doesn't exist")
 
@@ -252,9 +292,9 @@ class MetaData(SyncObj):
         brokerMap = {}
         for i in range(1, numPartitions + 1):
             brokerTopicName = str(i) + '#' + topicName
-            brokerList = cls.topicMetaData.getBrokerList(brokerTopicName)
+            brokerList = self.getBrokerList(brokerTopicName)
             brokerID = int(random() * len(brokerList))
-            brokerUrl = cls.getBrokerUrlFromID(brokerList[brokerID])
+            brokerUrl = self.getBrokerUrlFromID(brokerList[brokerID])
             res = requests.post(
                 brokerUrl + url,
                 json={
@@ -270,7 +310,7 @@ class MetaData(SyncObj):
                 raise Exception(res.json().get("message"))
             else:
                 ID = None
-                if isProducer:
+                if not isCon:
                     ID = res.json().get("producer_id")
                 else:
                     ID = res.json().get("consumer_id")
@@ -285,134 +325,19 @@ class MetaData(SyncObj):
 
         if len(brokerMap) == 0:
             raise Exception("Service currently unavailable. Please try again later.")    
-        if isProducer:
-            return cls.producerMetaData.addSubscription(IDs, topicName)
-        else:
-            return cls.consumerMetaData.addSubscription(IDs, topicName)
 
-    @classmethod      
-    def getBrokerUrlFromID(cls, brokerID):
-        #To be done by read only manager
-        return BrokerMetaDataDB.query.filter_by(broker_id = brokerID).first().url
-        #return cls.brokers[brokerID].url
-
-    @classmethod    
-    def checkBrokerHeartBeat(cls):
-        for _, broker in cls.brokers.items():
-            val = is_server_running(broker.url)
-            if val:
-                broker.lock.acquire()
-                broker.last_beat = time.monotonic()
-                broker.lock.release()
-            else:
-                requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(broker.brokerID)})
-
-    def checkManagerHeartBeat():
-        with app.app_context():
-            for obj in ManagerDB.query.all():
-                val = is_server_running(obj.url)
-                if val:
-                    pass
-                else:
-                    requests.get(APP_URL + "/crash_recovery_manager", params = {'managerID': str(obj.id)})
-
-    def getSubbedTopicName(self, topicName, partition = 0):
-        if topicName not in self.Topics:
-            raise Exception(f"Topicname: {topicName} doesn't exist")
-        ret = str(partition) + '#' + topicName
-        if partition:
-            if ret not in self.PartitionBroker:
-                raise Exception(f"Invalid partition for topic: {topicName}")
-        return ret
+        return self.addSubscription(IDs, topicName, isCon)
 
 
-    def getBrokerList(self, topicName, partition):
-        subbedTopicName = self.getSubbedTopicName(topicName, partition)
-        return self.PartitionBroker[subbedTopicName]
-
-    def getTopicsList(self):
-        return self.Topics
-
-
-
-
-class Manager:
-    
-    topicMetaData = TopicMetaData()
-    consumerMetaData = ConsumerMetaData()
-    producerMetaData = ProducerMetaData()
-    lock = threading.Lock()
-    # A map from broker ID to broker Metadata
-    brokers = {}
-    X = 0
+    def build_run(self):
+        self.brokerLock.acquire()
+        curr_id = getManager().getBrokerID()
+        self.brokerLock.release()
         
-
-class BrokerMetaData:
-    def __init__(self, DB_URI = '', url = '', name = '',brokerID = 0,docker_id = 0):
-        self.DB_URI = DB_URI
-        self.url = url
-        self.docker_name = name
-        self.last_beat = time.monotonic()
-        self.brokerID = brokerID
-        self.docker_id = docker_id
-        self.lock = threading.Lock()
-        self.port = 8000 #initial port for raft
-
-class Docker:
-    
-    cnt = 0
-    # Maps Docker Name to Broker Object --> Not needed
-    #self.id ={}
-    lock = threading.Lock()
-
-    @classmethod
-    def build_run(cls, path:str):
-        cls.lock.acquire()
-        curr_id = cls.cnt
-        cls.cnt += 1
-        cls.lock.release()
         broker_nme = "broker" + str(curr_id)
-        '''
-        if(database_exists('postgresql://{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_port,broker_nme))):
-            conn = psycopg2.connect(
-                user=db_username, password=db_password, host=db_host, port= db_port
-            )
-            conn.autocommit = True
-
-            cursor = conn.cursor()
-            sql = '''
-            #DROP database {};
-        '''.format(broker_nme)
-            cursor.execute(sql)
-            
-            conn.close()
-        ############## Create Database #######################
-        conn = psycopg2.connect(
-            user=db_username, password=db_password, host=db_host, port= db_port
-        )
-        conn.autocommit = True
-
-        cursor = conn.cursor()
-        sql = '''
-        #CREATE database {};
-        '''.format(broker_nme)
-        cursor.execute(sql)
-        
-        conn.close()
-        ####################################################
-        
-        '''    
+   
         db_uri = create_postgres_db(broker_nme,broker_nme+"_db",db_username,db_password)
-        #db_uri = 'postgresql+psycopg2://{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_port,broker_nme)
-        #obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
 
-        ###################### DB UPDATES ############################
-        #
-        #obj  = DockerDB()
-        #file.write("db.session.add(DockerDB()")
-        #db.session.add(obj)
-        #db.session.commit()
-        ##############################################################
         docker_id = 0
         print("broker"+str(curr_id),db_uri,docker_img_broker)
         os.system("docker rm -f broker"+str(curr_id))
@@ -423,48 +348,34 @@ class Docker:
         url = 'http://' + obj.decode('utf-8').strip() + ':5124'
         print(url)
 
-        #self.lock.acquire()
-        #self.id[broker_nme] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
-        #self.lock.release()
-        #TopicMetaData.lock.aquire()
-        #TopicMetaData.addBrokerUrl(url)
-        #TopicMetaData.lock.release()
-        broker_obj = BrokerMetaData(db_uri,url,"broker"+str(curr_id),curr_id,docker_id)
-        ################# DB UPDATES ########################
-        
-        obj = BrokerMetaDataDB(
-            broker_id = broker_obj.brokerID, 
-            url = broker_obj.url,
-            db_uri = broker_obj.DB_URI,
-            docker_name = broker_obj.docker_name,
-            last_beat = broker_obj.last_beat,
-            docker_id = broker_obj.docker_id,
+        getManager().addBroker(db_uri, url, curr_id, docker_id, sync = True)
 
+    @replicated
+    def restartBrokerRepl(self, url, brokerId, docker_id):
+        self.brokers[brokerId].url = url
+        self.brokers[brokerId].docker_id = docker_id
 
-        )
-        file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.url,broker_obj.DB_URI,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
-        db.session.add(obj)
-        db.session.commit()
-        #####################################################
-        return broker_obj
+        with app.app_context():
+            ################# DB UPDATES ########################
+            BrokerMetaDataDB.query.filter_by(broker_id = brokerId).update(dict(url = url,docker_id = docker_id))
+            file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(brokerId,oldBrokerObj.docker_name,url,docker_id))
+            db.session.commit()
+            #####################################################
 
-  
-    @classmethod
-    def restartBroker(cls, brokerId):
-        #return NotImplementedError()
-        # TODO Ping the broker before creating one
+    def restartBroker(self, brokerId):
+        if not is_leader(): return
         print("HELLL")
-        oldBrokerObj:BrokerMetaData = Manager.brokers[brokerId]
+        oldBrokerObj:BrokerMetaData = self.brokers[brokerId]
 
         db_uri = oldBrokerObj.DB_URI
 
-        Manager.brokers[brokerId].lock.acquire()
+        self.brokers[brokerId].lock.acquire()
         # Check if the server is still dead
         print("HELLL")
         val = is_server_running(oldBrokerObj.url)
         if val:
             # Server already restarted
-            Manager.brokers[brokerId].lock.release()
+            self.brokers[brokerId].lock.release()
             return
         print("HELLL")
         docker_id = 0
@@ -473,19 +384,10 @@ class Docker:
         url = get_url(oldBrokerObj.docker_name)
         url = 'http://' + url + ':5124'
 
-        Manager.brokers[brokerId].url = url
-        Manager.brokers[brokerId].docker_id = docker_id
+        self.restartBrokerRepl(url, brokerId, docker_id, sync = True)
 
-        Manager.brokers[brokerId].lock.release()
+        self.brokers[brokerId].lock.release()
         print("HELLL")
-        with app.app_context():
-            ################# DB UPDATES ########################
-            BrokerMetaDataDB.query.filter_by(broker_id = brokerId).update(dict(url = url,docker_id = docker_id))
-            file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(brokerId,oldBrokerObj.docker_name,url,docker_id))
-            db.session.commit()
-            #####################################################
-
-        return Manager.brokers[brokerId]
 
     @classmethod
     def restartManager(cls, managerId):
@@ -518,11 +420,74 @@ class Docker:
             db.session.commit()
             #####################################################
 
-        
-
-
     def removeBroker(cls,brokerUrl):
         pass#TODO
 
+    def getBrokerUrlFromID(self, brokerID):
+        #To be done by read only manager
+        return BrokerMetaDataDB.query.filter_by(broker_id = brokerID).first().url
+        #return cls.brokers[brokerID].url
 
 
+    def checkBrokerHeartBeat(self):
+        if not is_leader(): return
+        for _, broker in self.brokers.items():
+            val = is_server_running(broker.url)
+            if val:
+                broker.lock.acquire()
+                broker.last_beat = time.monotonic()
+                broker.lock.release()
+            else:
+                requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(broker.brokerID)})
+
+    def checkManagerHeartBeat(self):
+        if not is_leader(): return
+        with app.app_context():
+            for obj in ManagerDB.query.all():
+                val = is_server_running(obj.url)
+                if val:
+                    pass
+                else:
+                    requests.get(APP_URL + "/crash_recovery_manager", params = {'managerID': str(obj.id)})
+
+    def getSubbedTopicName(self, topicName, partition = 0):
+        if topicName not in self.Topics:
+            raise Exception(f"Topicname: {topicName} doesn't exist")
+        ret = str(partition) + '#' + topicName
+        if partition:
+            if ret not in self.PartitionBroker:
+                raise Exception(f"Invalid partition for topic: {topicName}")
+        return ret
+
+
+    def getBrokerList(self, topicName, partition):
+        subbedTopicName = self.getSubbedTopicName(topicName, partition)
+        return self.PartitionBroker[subbedTopicName]
+
+    def getTopicsList(self):
+        return list(self.Topics.keys())
+
+
+def setManager(selfAddr, otherAddr):
+    global manager
+    manager = Manager(selfAddr, otherAddr)
+
+def getManager() -> Manager:
+    return manager
+
+def get_status():
+    status = getManager().getStatus()
+    status['self'] = status['self'].address
+
+    if status['leader']:
+        status['leader'] = status['leader'].address
+
+    serializable_status = {
+        **status,
+        'is_leader': status['self'] == status['leader'],
+    }
+    return serializable_status
+
+
+def is_leader():
+    return get_status().get('is_leader', False)

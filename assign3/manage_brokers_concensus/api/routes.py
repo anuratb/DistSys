@@ -7,8 +7,9 @@ import os
 from api import db,random,DB_URI, APP_URL
 
 import requests
-from api import IsWriteManager, readManagerURL
+from api import readManagerURL
 from flask_executor import Executor
+from data_struct import getManager, is_leader
 
 
 executor = Executor(app)
@@ -40,7 +41,7 @@ def create_topic():
     print('Create Topic')
     topic_name : str = request.get_json().get('name')
     try:
-        Manager.topicMetaData.addTopic(topic_name)
+        getManager().addTopic(topic_name)
         return {
             "status" : "Success" , 
             "message" : 'Topic {} created successfully'.format(topic_name)
@@ -73,7 +74,7 @@ def create_topic():
 def list_topics():
     
     try : 
-        topic_list = Manager.topicMetaData.getTopicsList()
+        topic_list = getManager().getTopicsList()
         topic_string : str = ", ".join(topic_list)
         
         return {
@@ -112,21 +113,19 @@ def register_consumer():
     partition = request.get_json().get("partition")
     try:
         if partition:
-            ID_LIST = Manager.getBrokerList(topic, int(partition))
-            brokerUrl = Manager.getBrokerUrlFromID(ID_LIST[int(random() * len(ID_LIST))])
-            conID = Manager.getBrokerConID()
+            ID_LIST = getManager().getBrokerList(topic, int(partition))
+            brokerUrl = getManager().getBrokerUrlFromID(ID_LIST[int(random() * len(ID_LIST))])
             return requests.post(
                 brokerUrl + "/consumer/register", 
                 json = {
                     "topic": topic,
                     "partition": partition,
-                    "ID": conID,
                     "ID_LIST": ID_LIST
                 }
             ).json()
         else:
             # Subscribe to all partitions of a topic
-            retID = Manager.registerClientForAllPartitions("/consumer/register", topic, False)
+            retID = getManager().registerClientForAllPartitions("/consumer/register", topic, 1)
             return {
                 "status": "Success",
                 "consumer_id": str(retID)
@@ -164,21 +163,19 @@ def register_producer():
     
     try:
         if partition:
-            ID_LIST = Manager.getBrokerList(topic, int(partition))
-            brokerUrl = Manager.getBrokerUrlFromID(ID_LIST[int(random() * len(ID_LIST))])
-            prodID = Manager.getBrokerProdID()
+            ID_LIST = getManager().getBrokerList(topic, int(partition))
+            brokerUrl = getManager().getBrokerUrlFromID(ID_LIST[int(random() * len(ID_LIST))])
             return requests.post(
                 brokerUrl + "/producer/register", 
                 json = {
                     "topic": topic,
                     "partition": partition,
-                    "ID": prodID,
                     "ID_LIST": ID_LIST
                 }
             ).json()
         else:
             # Subscribe to all partitions of a topic
-            retID = Manager.registerClientForAllPartitions("/producer/register", topic, True)
+            retID = getManager().registerClientForAllPartitions("/producer/register", topic, 0)
             return {
                 "status": "Success",
                 "producer_id": str(retID)
@@ -221,29 +218,15 @@ def enqueue():
     brokerUrl = None
     brokerID = None
     partition = None
-    msgID = Manager.getMsgID()
-    
+
     try:
         if producer_id[0] == '$':
-            #Update topic rrindex
-            #Manager.topicMetaData.Topics[topic][3].acquire()
-            #rrIndex = Manager.topicMetaData.Topics[topic][2]
-            #Manager.topicMetaData.Topics[topic][2] += 1
-            #TODO sync
-            ###################### DB Update ############################
-            obj = TopicDB.query.filter_by(topicName = topic).first()
-            rrIndex = obj.rrindex
-            obj.rrindex = obj.rrindex + 1            
-            db.session.commit()
-            #############################################################
-            #Manager.topicMetaData.Topics[topic][3].release()
-            
-            ID_LIST, localProdID, partition = Manager.producerMetaData.getRRIndex(producer_id, topic, rrIndex)    
+            ID_LIST, localProdID, partition = getManager().getRRIndex(producer_id, topic, 0)    
         else:
-            ID_LIST = Manager.getBrokerList(topic, int(partition))
+            ID_LIST = getManager().getBrokerList(topic, int(partition))
         
         brokerID = ID_LIST[int(random() * len(ID_LIST))]
-        brokerUrl = Manager.getBrokerUrlFromID(brokerID)
+        brokerUrl = getManager().getBrokerUrlFromID(brokerID)
         res = requests.post(
             brokerUrl + "/producer/produce",
             json = {
@@ -251,8 +234,7 @@ def enqueue():
                 "producer_id": localProdID,
                 "message":message,
                 "partition":partition,
-                "ID_LIST": ID_LIST,
-                "msgID": msgID
+                "ID_LIST": ID_LIST
             }
         )
 
