@@ -279,7 +279,7 @@ class Manager:
         # TODO Perform necessary DB updates here
         for _ in range(numPartitions):
             # TODO assign the broker url
-            brokerSet = cls.getRandomBrokers()
+            brokerSet = cls.getRandomBrokers()#TODO anurat
             brokerTopicName = str(actualPartitions + 1) + '#' + topicName
 
             url = cls.brokers[brokerSet[0]].url

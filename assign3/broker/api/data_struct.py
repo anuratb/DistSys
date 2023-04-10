@@ -156,7 +156,7 @@ class QueueList(SyncObj):
 
     def addTopicWrapper(self, topicName, ID_LIST, topicID = None):
         print("Entered Topic Wrapper")
-        self.isReady()
+        self.isReady_()
         while not lockManager.tryAcquire(TOPICLOCK, sync = True):
             continue
         print("Entered Lock Manager")
@@ -168,7 +168,7 @@ class QueueList(SyncObj):
         return topicID
 
     def listTopics(self):
-        self.isReady()
+        self.isReady_()
         return [topicName for topicName in self.QList.keys()]
 
     def isValidTopic(self, topicName):
@@ -190,7 +190,7 @@ class QueueList(SyncObj):
             self.QList[topicName].subscribeProducer(topicName, prodID)
 
     def registerConsumer(self, topicName, ID_LIST):
-        self.isReady()
+        self.isReady_()
         if not self.isValidTopic(topicName):
             raise Exception('Topicname: {} does not exists'.format(topicName))
 
@@ -206,7 +206,7 @@ class QueueList(SyncObj):
         return nid
 
     def registerProducer(self, topicName, ID_LIST):
-        self.isReady()
+        self.isReady_()
         if not self.isValidTopic(topicName):
             raise Exception('Topicname: {} does not exists'.format(topicName))
         
@@ -227,7 +227,7 @@ class QueueList(SyncObj):
             self.QList[topicName].addMessage(msgID, msg, ID_LIST, sync = True)
 
     def enqueue(self, topicName, prodID, msg, ID_LIST):
-        self.isReady()
+        self.isReady_()
         #print("Enqueueing: ", topicName, prodID, msg)
         #print(cls.topics.get(topicName).producerList)
       
@@ -257,7 +257,7 @@ class QueueList(SyncObj):
             return index
 
     def dequeue(self, topicName, conID, ID_LIST):
-        self.isReady()
+        self.isReady_()
         # Check if topic exists
         if not self.isValidTopic(topicName):
             raise Exception('Topicname: {} does not exists'.format(topicName))
@@ -277,7 +277,7 @@ class QueueList(SyncObj):
             return msg
 
     def getSize(self, topicName, conID):
-        self.isReady()
+        self.isReady_()
         if not self.isValidTopic(topicName):
             raise Exception('Topicname: {} does not exists'.format(topicName))
         # Check if user is registered for the topic
@@ -285,7 +285,7 @@ class QueueList(SyncObj):
             raise Exception("Error: Invalid producer ID!")
         return self.QList[topicName].getRemainingSize(conID)
         
-    def isReady(self):
+    def isReady_(self):
         while not QObj.isReady():
             time.sleep(1)
             print(f"BrokerID-{BROKER_ID}: Not ready Yet")
