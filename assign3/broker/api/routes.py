@@ -1,7 +1,7 @@
 
 from flask import request
 from api import app
-from data_struct import getQObj
+from api.data_struct import getQObj
 
 '''
     a. CreateTopic
@@ -281,5 +281,29 @@ def isAlive():
     return {
         "status": "Success"
     }
+
+@ app.route("/raft", methods=['POST'])
+def set_raft():
+    
+
+    try :
+        master : str = request.get_json().get('master')
+        slave = request.get_json().get('slave')
+        from api.data_struct import createQObj
+        print(master,slave)
+        createQObj(master, slave)
+        from api.data_struct import QObj
+        while QObj._getLeader() is None:
+            continue
+        return {
+            "status" : "Success" 
+        }
+    
+    except Exception as e: 
+        return {
+            "status" : "Failure" ,
+            "message" : str(e)
+        }
+
 
 
