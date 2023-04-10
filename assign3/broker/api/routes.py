@@ -104,8 +104,11 @@ def register_consumer():
     topicName = request.get_json().get("topic")
     partition = request.get_json().get("partition")
     topic = str(partition) + '#' + topicName
-    ID_LIST = request.get_json().get('ID_LIST')
+
+    ID_LIST = [str(x) for x in request.get_json().get('ID_LIST')]
+
     conID = request.get_json().get('ID')
+
     try:
         cid = getQObj().registerConsumer(topic, ID_LIST, conID)
         return {
@@ -142,8 +145,11 @@ def register_producer():
     topicName = request.get_json().get("topic")
     partition = request.get_json().get("partition")
     topic = str(partition) + '#' + topicName
-    ID_LIST = request.get_json().get('ID_LIST')
+
+    ID_LIST = [str(x) for x in request.get_json().get('ID_LIST')]
+
     prodID = request.get_json().get('ID')
+
     try:
         pid = getQObj().registerProducer(topic, ID_LIST, prodID)
         return {
@@ -185,8 +191,11 @@ def enqueue():
         message: str = request.get_json().get('message')
         print(topicName,partition,producer_id,message)
         topic = str(partition) + '#' + topicName
-        ID_LIST = request.get_json().get('ID_LIST')
+
+        ID_LIST = [str(x) for x in request.get_json().get('ID_LIST')]
+
         msgID = request.get_json().get('msgID')
+
 
         getQObj().enqueue(topic, producer_id , message, ID_LIST, msgID)
         return {
@@ -222,12 +231,14 @@ def enqueue():
 def dequeue():
     
     try :
+        print(request.args,request.get_json())
         topicName: str = request.args.get('topic', type=str)
+        print(topicName)
         partition = request.args.get("partition")
         consumer_id:int= int(request.args.get('consumer_id', type=int))
         topic = str(partition) + '#' + topicName
-        ID_LIST = request.get_json().get('ID_LIST')
-
+        ID_LIST = [str(x) for x in request.args.get('ID_LIST')]
+        print("Input correct")
         msg = getQObj().dequeue(topic, consumer_id, ID_LIST)
         return {
             "status": "Success",
@@ -264,7 +275,7 @@ def size():
     partition = request.args.get("partition")
     consumer_id : int = request.args.get('consumer_id', type=int)
     topic = str(partition) + '#' + topicName
-    ID_LIST = request.get_json().get('ID_LIST')
+    ID_LIST = [str(x) for x in request.get_json().get('ID_LIST')]
 
     try : 
         queue_size : int = getQObj().getSize(topic, consumer_id, ID_LIST)
