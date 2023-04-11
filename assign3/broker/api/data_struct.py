@@ -9,121 +9,29 @@ BROKER_ID = str(os.environ.get('BROKER_ID'))
 QObj = None
 
 
-class Queue:
-    def __init__(self, topicID_, topicName_):
-        self.queue = []
-        # Key: Consumer ID, Value: (offset in the topic queue)
-        self.Offset = {}
-        self.topicID = topicID_
-        self.topicName = topicName_
-        self.producerList = [] # List of subscribed producers
-        self.consumerList = [] # List of subscribed consumers
-        
- 
-    def subscribeProducer(self, prodID):
-        if prodID in self.producerList:
-            return
-        self.producerList.append(prodID)
-
-        # TODO: check if the data is already in database
-        if(len(Producer.query.filter_by(id=prodID).all())>0):
-            return
-        obj = Producer(id = prodID)
-        cur = Topics.query.filter_by(id = self.topicID).first()
-        cur.producers.append(obj)
-        db.session.add(obj)
-        db.session.commit()
-
-
-    def subscribeConsumer(self, conID):
-        if conID in self.consumerList:
-            return
-        self.consumerList.append(conID)
-
-        # TODO: check if the data is already in database
-        if(len(Consumer.query.filter_by(id=conID).all())>0):
-            return
-        obj = Consumer(id = conID, offset = 0)
-        cur = Topics.query.filter_by(id = self.topicID).first()
-        cur.consumers.append(obj)
-        db.session.add(obj)
-        db.session.commit()
-
-    def addOffset(self, conID):
-        self.Offset[conID] = 0
-
-    def getUpdOffset(self, conID):
-        offset = self.Offset[conID]
-        if offset < len(self.queue):
-            self.Offset[conID] += 1
-            # TODO: check if the data is already in database
-
-            obj = Consumer.query.filter_by(id = conID).first()
-            obj.offset += 1
-            db.session.commit()
-        else:
-            offset = -1
-        return offset
-
-    def addMessage(self, nid, msg):
-        prev_id = None
-        if len(self.queue):
-            prev_id = self.queue[-1][0]
-        self.queue.append([nid, msg])
-        
-        # TODO: check if the data is already in database
-        if(len(QueueDB.query.filter_by(id=nid,value=msg).all())>0):
-            return
-        obj = QueueDB(id = nid,value = msg)
-        db.session.add(obj)
-        topic = Topics.query.filter_by(id = self.topicID).first()
-        if prev_id is None:
-            topic.start_ind = nid  
-        else:
-            prevMsg = QueueDB.query.filter_by(id = prev_id).first()
-            prevMsg.nxt_id = nid
-        topic.end_ind = nid
-        db.session.commit()
-
-    def getTopicID(self):
-        return self.topicID
-
-    def getTopicName(self):
-        return self.topicName
-
-    def isConRegistered(self, conID):
-        if conID in self.consumerList:
-            return True
-        else:
-            return False
-    
-    def isProdRegistered(self, prodID):
-        if prodID in self.producerList:
-            return True
-        else:
-            return False
-
-    def getMessage(self, offset):
-        return self.queue[offset][1]
-
-    def getRemainingSize(self, conID):
-        return len(self.queue) - self.Offset[conID][0]
-
 class QueueList(SyncObj):
     
     def __init__(self, selfAddr, otherAddrs):
         super().__init__(selfAddr, otherAddrs)
-        # topicName -> Queue
-        self.QList = {}
         # topicName -> Lock
         self.QLock = {}
         # ConsumerID -> Lock
         self.offsetLock = {}
+        # topicName to list of mssges
+        self.queue = {}
+        # Key: Consumer ID, Value: (offset in the topic queue)
+        self.Offset = {}
+        # topicName -> topicID
+        self.topics = {}
+        # topicName -> List of subscribed producers
+        self.producerList = {}
+        # topicName -> List of subscribed consumers
+        self.consumerList = {} 
 
     @replicated
     def addTopic(self, topicID, topicName, ID_LIST):
         print(BROKER_ID,ID_LIST)
-        if str(BROKER_ID )in ID_LIST:
+        if str(BROKER_ID) in ID_LIST:
             with app.app_context():
                 # TODO: check if the data is already in database
                 print("Adding Topic")
@@ -131,7 +39,7 @@ class QueueList(SyncObj):
                     return
                 db.session.add(Topics(id = topicID, value = topicName))
                 db.session.commit()
-                self.QList[topicName] = Queue(topicID, topicName)
+                self.topics[topicName] = topicID
                 self.QLock[topicName] = threading.Lock()
                 print("Added Topic")
 
@@ -149,10 +57,10 @@ class QueueList(SyncObj):
     def listTopics(self):
         self.isReady_()
         
-        return [topicName for topicName in self.QList.keys()]
+        return [topicName for topicName in self.topics.keys()]
 
     def isValidTopic(self, topicName):
-        if topicName in self.QList:
+        if topicName in self.topics:
             return True
         else:
             return False
@@ -160,14 +68,40 @@ class QueueList(SyncObj):
     @replicated
     def addConsumer(self, topicName, conID, ID_LIST):
         if BROKER_ID in ID_LIST:
-            self.QList[topicName].subscribeConsumer(topicName, conID)
-            self.QList[topicName].addOffset(conID)
+            if topicName not in self.consumerList:
+                self.consumerList[topicName] = []
+            self.consumerList[topicName].append(conID)
             self.offsetLock[conID] = threading.Lock()
+
+            # TODO: check if the data is already in database
+            if(len(Consumer.query.filter_by(id = conID).all()) > 0):
+                return
+            obj = Consumer(id = conID, offset = 0)
+            cur = Topics.query.filter_by(id = self.topics[topicName]).first()
+            cur.consumers.append(obj)
+            db.session.add(obj)
+            db.session.commit()
+
+            # self.QList[topicName].subscribeConsumer(topicName, conID)
+            # self.QList[topicName].addOffset(conID)
+            # self.offsetLock[conID] = threading.Lock()
 
     @replicated
     def addProducer(self, topicName, prodID, ID_LIST):
         if BROKER_ID in ID_LIST:
-            self.QList[topicName].subscribeProducer(topicName, prodID)
+            if topicName not in self.producerList:
+                self.producerList[topicName] = []
+            self.producerList[topicName].append(prodID)
+            self.offsetLock[prodID] = threading.Lock()
+
+            # TODO: check if the data is already in database
+            if(len(Producer.query.filter_by(id = prodID).all()) > 0):
+                return
+            obj = Producer(id = prodID)
+            cur = Topics.query.filter_by(id = self.topics[topicName]).first()
+            cur.producers.append(obj)
+            db.session.add(obj)
+            db.session.commit()
 
     def registerConsumer(self, topicName, ID_LIST, conID):
         self.isReady_()
@@ -195,10 +129,30 @@ class QueueList(SyncObj):
 
         return nid
 
+
     @replicated
     def addMessage(self, topicName, msgID, msg, ID_LIST):
         if BROKER_ID in ID_LIST:
-            self.QList[topicName].addMessage(msgID, msg, ID_LIST)
+            if topicName not in self.queue:
+                self.queue[topicName] = []
+            prev_id = None
+            if len(self.queue):
+                prev_id = self.queue[-1][0]
+            self.queue.append([msgID, msg])
+            
+            # TODO: check if the data is already in database
+            if(len(QueueDB.query.filter_by(id = msgID, value = msg).all()) > 0):
+                return
+            obj = QueueDB(id = msgID, value = msg)
+            db.session.add(obj)
+            topic = Topics.query.filter_by(id = self.topics[topicName]).first()
+            if prev_id is None:
+                topic.start_ind = msgID  
+            else:
+                prevMsg = QueueDB.query.filter_by(id = prev_id).first()
+                prevMsg.nxt_id = msgID
+            topic.end_ind = msgID
+            db.session.commit()
 
     def enqueue(self, topicName, prodID, msg, ID_LIST, msgID):
         self.isReady_()
@@ -212,7 +166,7 @@ class QueueList(SyncObj):
         #print("----------------------")
         # Check if user is registered for the topic
         
-        if not self.QList[topicName].isProdRegistered(prodID):
+        if not self.isProdRegistered(topicName, prodID):
             raise Exception("Error: Invalid producer ID!")
 
         nid = msgID
@@ -224,8 +178,20 @@ class QueueList(SyncObj):
     @replicated
     def getUpdOffset(self, topicName, conID, ID_LIST):
         if BROKER_ID in ID_LIST:
-            index = self.QList[topicName].getUpdOffset(conID)
-            return index
+            if conID not in self.Offset:
+                self.Offset[conID] = 0
+                # TODO DB update for offset creation
+                return
+            offset = self.Offset[conID]
+            if offset < len(self.queue[topicName]):
+                self.Offset[conID] += 1
+                # TODO: check if the data is already in database
+                obj = Consumer.query.filter_by(id = conID).first()
+                obj.offset += 1
+                db.session.commit()
+            else:
+                offset = -1
+            return offset
 
     def dequeue(self, topicName, conID, ID_LIST):
         self.isReady_()
@@ -234,7 +200,7 @@ class QueueList(SyncObj):
             raise Exception('Topicname: {} does not exists'.format(topicName))
         
         # Check if user is registered for the topic
-        if not self.QList[topicName].isConRegistered(conID):
+        if not self.isConRegistered(topicName, conID):
             raise Exception("Error: Invalid consumer ID!")
         
         self.offsetLock[conID].acquire()
@@ -244,7 +210,7 @@ class QueueList(SyncObj):
         if index == -1:
             raise Exception("There are no new messages!")
         else:
-            msg = self.QList[topicName].getMessage(index)
+            msg = self.getMessage(topicName, index)
             return msg
 
     def getSize(self, topicName, conID):
@@ -252,15 +218,35 @@ class QueueList(SyncObj):
         if not self.isValidTopic(topicName):
             raise Exception('Topicname: {} does not exists'.format(topicName))
         # Check if user is registered for the topic
-        if not self.QList[topicName].isConRegistered(conID):
+        if not self.isConRegistered(topicName, conID):
             raise Exception("Error: Invalid producer ID!")
-        return self.QList[topicName].getRemainingSize(conID)
+        return self.getRemainingSize(topicName, conID)
         
     def isReady_(self):
         while not QObj.isReady():
             time.sleep(1)
             print(f"BrokerID-{BROKER_ID}: Not ready Yet")
 
+    def getTopicID(self, topicName):
+        return self.topics[topicName]
+
+    def isConRegistered(self, topicName, conID):
+        if conID in self.consumerList[topicName]:
+            return True
+        else:
+            return False
+    
+    def isProdRegistered(self, topicName, prodID):
+        if prodID in self.producerList[topicName]:
+            return True
+        else:
+            return False
+
+    def getMessage(self, topicName, offset):
+        return self.queue[topicName][offset][1]
+
+    def getRemainingSize(self, topicName, conID):
+        return len(self.queue[topicName]) - self.Offset[conID]
 
 def setBrokerID(broker_id):
     global BROKER_ID
