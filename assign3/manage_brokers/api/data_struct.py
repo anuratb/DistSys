@@ -63,13 +63,13 @@ class TopicMetaData:
 
             # TODO assignedBrokers[i] is now a list... Modify DB updates
             ####################### DB UPDATES ###########################
-            db.session.add(
-                TopicBroker(
-                    topic = topicName,
-                    brokerID = assignedBrokers[K],
-                    partition = partitionNo
-                )
+            obj  = TopicBroker(
+                topic=topicName,
+                partition=partitionNo
             )
+            for itr in assignedBrokers[K]:
+                obj.brokerID.append(itr)
+            db.session.add(obj)
             file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, assignedBrokers[K], partitionNo))
             partitionNo += 1
         
@@ -486,7 +486,7 @@ class Docker:
     lock = threading.Lock()
 
     @classmethod
-    def build_run(cls, path:str,master:str,slave:str):
+    def build_run(cls, path:str,master:str,slave):
         cls.lock.acquire()
         curr_id = cls.cnt
         cls.cnt += 1
@@ -542,17 +542,20 @@ class Docker:
         -e DB_URI="postgresql+psycopg2://$user:$pass@$IP:5432/$DB_NAME" 
         -e BROKER_ID=$4 -e SELF_ADDR=$6 -e SLAVE_ADDR=$7 broker
         """
+        master2 = master+":8000"
         slave_ips= ""
         for i,itr in enumerate(slave):
             if i+1==len(slave):
-                slave_ips += itr 
+                slave_ips += (itr + ":8000")
             else :
-                slave_ips += itr + "$"
-        cmd = f"docker run -net brokernet --name broker{str(curr_id)} -d -p 0:5124 --expose 5124 -e DB_URI={db_uri} -e BROKER_ID={curr_id} -e SELF_ADDR={master} -e SLAVE_ADDR={slave_ips} {docker_img_broker}"
+                slave_ips += itr + ":8000$"
+        cmd = f"docker run -net brokernet --ip {master} --name broker{str(curr_id)} -d -p 0:5124 --expose 5124 -e DB_URI={db_uri} -e BROKER_ID={curr_id} -e SELF_ADDR={master2} -e SLAVE_ADDR={slave_ips} {docker_img_broker}"
         os.system(cmd)
         #print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
         url = 'http://' + obj.decode('utf-8').strip() + ':5124'
+        raft_url = 'http://' + obj.decode('utf-8').strip() + ':8000'
+        sync_url = 'http://' + obj.decode('utf-8').strip() + ':8001'
         print(url)
 
         #self.lock.acquire()
@@ -571,8 +574,8 @@ class Docker:
             docker_name = broker_obj.docker_name,
             last_beat = broker_obj.last_beat,
             docker_id = broker_obj.docker_id,
-
-
+            raft_url = raft_url,
+            sync_url = sync_url
         )
         file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.url,broker_obj.DB_URI,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
         db.session.add(obj)
@@ -601,21 +604,37 @@ class Docker:
         print("HELLL")
         docker_id = 0
         os.system("docker rm -f {}".format(oldBrokerObj.docker_name))
-        os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format(oldBrokerObj.docker_name,db_uri,docker_img_broker))
-        url = get_url(oldBrokerObj.docker_name)
-        url = 'http://' + url + ':5124'
+        master = oldBrokerObj.url.split(":")[1].split("//")[1]
+        master2 = master+":8000"
+        from api import ip_list1
+        slave = []
+        for val in ip_list1:
+            if val != master:
+                slave.append(val)
+        slave_ips= ""
+        for i,itr in enumerate(slave):
+            if i+1==len(slave):
+                slave_ips += (itr + ":8000")
+            else :
+                slave_ips += itr + ":8000$"
+        cmd = f"docker run -net brokernet --ip {master} --name broker{oldBrokerObj.docker_name} -d -p 0:5124 --expose 5124 -e DB_URI={db_uri} -e BROKER_ID={brokerId} -e SELF_ADDR={master2} -e SLAVE_ADDR={slave_ips} {docker_img_broker}"
+        os.system(cmd)
+        print("HELL")
+        #os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format(oldBrokerObj.docker_name,db_uri,docker_img_broker))
+        # url = get_url(oldBrokerObj.docker_name)
+        # url = 'http://' + url + ':5124'
 
-        Manager.brokers[brokerId].url = url
-        Manager.brokers[brokerId].docker_id = docker_id
+        # Manager.brokers[brokerId].url = url
+        # Manager.brokers[brokerId].docker_id = docker_id
 
-        Manager.brokers[brokerId].lock.release()
-        print("HELLL")
-        with app.app_context():
-            ################# DB UPDATES ########################
-            BrokerMetaDataDB.query.filter_by(broker_id = brokerId).update(dict(url = url,docker_id = docker_id))
-            file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(brokerId,oldBrokerObj.docker_name,url,docker_id))
-            db.session.commit()
-            #####################################################
+        # Manager.brokers[brokerId].lock.release()
+        # print("HELLL")
+        # with app.app_context():
+        #     ################# DB UPDATES ########################
+        #     BrokerMetaDataDB.query.filter_by(broker_id = brokerId).update(dict(url = url,docker_id = docker_id))
+        #     file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(brokerId,oldBrokerObj.docker_name,url,docker_id))
+        #     db.session.commit()
+        #     #####################################################
 
         return Manager.brokers[brokerId]
 

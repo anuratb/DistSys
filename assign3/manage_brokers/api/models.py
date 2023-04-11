@@ -23,11 +23,21 @@ class TopicDB(db.Model):
     numPartitions = db.Column(db.Integer,nullable=False)
     rrindex = db.Column(db.Integer,nullable=False)
     #topicMetaData_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
+replication_table = db.Table('user_group',
+                      db.Column('topic_id', db.Integer, db.ForeignKey('TopicBroker.id')),
+                      db.Column('broker_id', db.Integer, db.ForeignKey('Broker.id')))
 class TopicBroker(db.Model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)
     topic = db.Column(db.String,primary_key=False,nullable=False)
     partition = db.Column(db.Integer,primary_key=False,nullable=False)
-    brokerID = db.Column(db.Integer,primary_key = False,nullable=False)
+    #brokerID = db.Column(db.Integer,primary_key = False,nullable=False)
+    brokerID = db.relationship(
+        'TopicBroker',
+        secondary=replication_table,
+        primaryjoin=(replication_table.c.topic_id == id),
+        secondaryjoin=(replication_table.c.broker_id == id),
+        backref=db.backref('topicPartitions',lazy='dynamic'),
+        lazy='dynamic')
     #topic_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
 
 #class BrokerURL(db.Model):
@@ -130,6 +140,8 @@ class BrokerMetaDataDB(db.Model):
     docker_id = db.Column(db.Integer,db.ForeignKey('docker_db.id'))
     localProd = db.relationship('localProducerDB',backref='broker',lazy=True)
     localCons = db.relationship('localConsumerDB',backref='broker',lazy=True)
+    raft_url = db.Column(db.String,nullable=False)
+    sync_url = db.Column(db.String,nullable=False)
 
 ############################### DOCKER METADATA ##############################################
 class DockerDB(db.Model):
@@ -144,24 +156,24 @@ class ManagerDB(db.Model):
 
 ############################### Replication ##############################################
 
-replication_table = db.Table('user_group',
-                      db.Column('master_id', db.Integer, db.ForeignKey('ReplicationDB.id')),
-                      db.Column('slave_id', db.Integer, db.ForeignKey('ReplicationDB.id')))
+# replication_table = db.Table('user_group',
+#                       db.Column('master_id', db.Integer, db.ForeignKey('ReplicationDB.id')),
+#                       db.Column('slave_id', db.Integer, db.ForeignKey('ReplicationDB.id')))
 
 
-class ReplicationDB(db.Model):
-    id = db.Column(db.Integer,primary_key=True,nullable=False)
-    replica_id = db.Column(db.Integer,primary_key=False,nullable=False)#replica id
-    topic = db.Column(db.String,nullable=False)
-    partition = db.Column(db.Integer,nullable=False)
-    raft_url = db.Column(db.String,nullable=False)
-    sync_url = db.Column(db.String,nullable=False)
-    broker_id = db.Column(db.Integer,nullable=False)
-    replicas = db.relationship(
-        'ReplicationDB',
-        secondary=replication_table,
-        primaryjoin=(replication_table.c.master_id == id),
-        secondaryjoin=(replication_table.c.slave_id == id),
-        backref=db.backref('replication',lazy='dynamic'),
-        lazy='dynamic')
+# class ReplicationDB(db.Model):
+#     id = db.Column(db.Integer,primary_key=True,nullable=False)
+#     replica_id = db.Column(db.Integer,primary_key=False,nullable=False)#replica id
+#     topic = db.Column(db.String,nullable=False)
+#     partition = db.Column(db.Integer,nullable=False)
+#     raft_url = db.Column(db.String,nullable=False)
+#     sync_url = db.Column(db.String,nullable=False)
+#     broker_id = db.Column(db.Integer,nullable=False)
+#     replicas = db.relationship(
+#         'ReplicationDB',
+#         secondary=replication_table,
+#         primaryjoin=(replication_table.c.master_id == id),
+#         secondaryjoin=(replication_table.c.slave_id == id),
+#         backref=db.backref('replication',lazy='dynamic'),
+#         lazy='dynamic')
     

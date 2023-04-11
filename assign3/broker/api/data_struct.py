@@ -270,6 +270,7 @@ class QueueList(SyncObj):
                 if topicName not in self.queue:
                     self.queue[topicName] = []
                 prev_id = None
+                print(self.queue[topicName])
                 if len(self.queue[topicName])>0:
                     prev_id = self.queue[topicName][-1][0]
                 self.queue[topicName].append([msgID, msg])
