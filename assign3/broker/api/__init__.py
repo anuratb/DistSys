@@ -4,7 +4,6 @@ import os
 import threading, time
 import json
 import dotenv
-from data_struct import createQObj
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@10.102.68.15:5432/anurat'
 
@@ -31,6 +30,8 @@ def create_app(test_config = None):
     app.config['SECRET_KEY'] = secret_key
     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
     db = SQLAlchemy(app)
+    
+        
     '''
     #TODO testing and create database
     if test_config is None:
@@ -73,10 +74,10 @@ slave_port = [int(itr[1])+1 for itr in slave]
 #     continue
 
 
-from api.data_struct import Queue,QueueList
+#from api.data_struct import QueueList
 
 from api.models import QueueDB,Topics,Producer,Consumer
-
+'''
 def load_from_db():
     conID = set()
     for cons in Consumer.query.all():
@@ -115,7 +116,7 @@ def load_from_db():
     #print(Queue.queue)
 
     return
-
+'''
 
 
 '''
@@ -153,9 +154,9 @@ def load_from_db():
 
 
 app.app_context().push()
-from api.data_struct import Queue
+#from api.data_struct import Queue
 #Queue.clear()
-db.drop_all()
+#db.drop_all()
 db.create_all()
 #load_from_db()
 

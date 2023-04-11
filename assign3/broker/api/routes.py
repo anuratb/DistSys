@@ -237,7 +237,7 @@ def dequeue():
         partition = request.args.get("partition")
         consumer_id:int= int(request.args.get('consumer_id', type=int))
         topic = str(partition) + '#' + topicName
-        ID_LIST = [str(x) for x in request.args.get('ID_LIST')]
+        ID_LIST = [str(x) for x in request.args.to_dict(flat=False).get('ID_LIST')]
         print("Input correct")
         msg = getQObj().dequeue(topic, consumer_id, ID_LIST)
         return {

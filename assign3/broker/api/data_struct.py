@@ -9,8 +9,7 @@ BROKER_ID = str(os.environ.get('BROKER_ID'))
 QObj = None
 
 
-
-class Queue:
+'''class Queue:
     def __init__(self, topicID_, topicName_):
         self.queue = []
         # Key: Consumer ID, Value: (offset in the topic queue)
@@ -116,7 +115,7 @@ class Queue:
 
     def getRemainingSize(self, conID):
         return len(self.queue) - self.Offset[conID][0]
-
+'''
 
 class QueueList(SyncObj):
     
@@ -139,18 +138,20 @@ class QueueList(SyncObj):
 
     @replicated
     def addTopic(self, topicID, topicName, ID_LIST):
-        print(BROKER_ID,ID_LIST)
-        if str(BROKER_ID) in ID_LIST:
-            with app.app_context():
-                # TODO: check if the data is already in database
-                print("Adding Topic")
-                if(len(Topics.query.filter_by(id=topicID,value=topicName).all())>0):
-                    return
-                db.session.add(Topics(id = topicID, value = topicName))
-                db.session.commit()
-                self.topics[topicName] = topicID
-                self.QLock[topicName] = threading.Lock()
-                print("Added Topic")
+        with app.app_context():
+            print(BROKER_ID,ID_LIST)
+            if str(BROKER_ID) in ID_LIST:
+                with app.app_context():
+                    # TODO: check if the data is already in database
+                    print("Adding Topic")
+                    self.topics[topicName] = topicID
+                    self.QLock[topicName] = threading.Lock()
+                    if(len(Topics.query.filter_by(id=topicID,value=topicName).all())>0):
+                        return
+                    db.session.add(Topics(id = topicID, value = topicName))
+                    db.session.commit()
+                    
+                    print("Added Topic")
 
 
     def addTopicWrapper(self, topicName, ID_LIST, topicID_):
@@ -176,53 +177,54 @@ class QueueList(SyncObj):
 
     @replicated
     def addConsumer(self, topicName, conID, ID_LIST):
+        with app.app_context():
+            if str(BROKER_ID) in ID_LIST:
+                if topicName not in self.consumerList:
+                    self.consumerList[topicName] = []
+                self.consumerList[topicName].append(conID)
 
-        if str(BROKER_ID) in ID_LIST:
-            if topicName not in self.consumerList:
-                self.consumerList[topicName] = []
-            self.consumerList[topicName].append(conID)
+            #if str(BROKER_ID) in ID_LIST:
+            #    self.QList[topicName].subscribeConsumer(topicName, conID)
+            #    self.QList[topicName].addOffset(conID)
 
-        #if str(BROKER_ID) in ID_LIST:
-        #    self.QList[topicName].subscribeConsumer(topicName, conID)
-        #    self.QList[topicName].addOffset(conID)
+                self.offsetLock[conID] = threading.Lock()
 
-            self.offsetLock[conID] = threading.Lock()
+                # TODO: check if the data is already in database
+                if(len(Consumer.query.filter_by(id = conID).all()) > 0):
+                    return
+                obj = Consumer(id = conID, offset = 0)
+                cur = Topics.query.filter_by(id = self.topics[topicName]).first()
+                cur.consumers.append(obj)
+                db.session.add(obj)
+                db.session.commit()
 
-            # TODO: check if the data is already in database
-            if(len(Consumer.query.filter_by(id = conID).all()) > 0):
-                return
-            obj = Consumer(id = conID, offset = 0)
-            cur = Topics.query.filter_by(id = self.topics[topicName]).first()
-            cur.consumers.append(obj)
-            db.session.add(obj)
-            db.session.commit()
-
-            # self.QList[topicName].subscribeConsumer(topicName, conID)
-            # self.QList[topicName].addOffset(conID)
-            # self.offsetLock[conID] = threading.Lock()
+                # self.QList[topicName].subscribeConsumer(topicName, conID)
+                # self.QList[topicName].addOffset(conID)
+                # self.offsetLock[conID] = threading.Lock()
 
     @replicated
     def addProducer(self, topicName, prodID, ID_LIST):
+        with app.app_context():
+            if str(BROKER_ID) in ID_LIST:
+                print("Add PRoducer Called")
+                if topicName not in self.producerList:
+                    self.producerList[topicName] = []
+                self.producerList[topicName].append(prodID)
+                self.offsetLock[prodID] = threading.Lock()
 
-        if str(BROKER_ID) in ID_LIST:
-            print("Add PRoducer Called")
-            if topicName not in self.producerList:
-                self.producerList[topicName] = []
-            self.producerList[topicName].append(prodID)
-            self.offsetLock[prodID] = threading.Lock()
+                # TODO: check if the data is already in database
+                if(len(Producer.query.filter_by(id = prodID).all()) > 0):
+                    return
+                obj = Producer(id = prodID)
+                print(topicName,self.topics)
+                cur = Topics.query.filter_by(id = self.topics[topicName]).first()
+                cur.producers.append(obj)
+                db.session.add(obj)
+                db.session.commit()
 
-            # TODO: check if the data is already in database
-            if(len(Producer.query.filter_by(id = prodID).all()) > 0):
-                return
-            obj = Producer(id = prodID)
-            cur = Topics.query.filter_by(id = self.topics[topicName]).first()
-            cur.producers.append(obj)
-            db.session.add(obj)
-            db.session.commit()
-
-        #print("Add PRoducer Called")
-        #if str(BROKER_ID) in ID_LIST:
-        #    self.QList[topicName].subscribeProducer(topicName, prodID)
+            #print("Add PRoducer Called")
+            #if str(BROKER_ID) in ID_LIST:
+            #    self.QList[topicName].subscribeProducer(topicName, prodID)
 
 
     def registerConsumer(self, topicName, ID_LIST, conID):
@@ -263,28 +265,28 @@ class QueueList(SyncObj):
 
     @replicated
     def addMessage(self, topicName, msgID, msg, ID_LIST):
-
-        if str(BROKER_ID) in ID_LIST:
-            if topicName not in self.queue:
-                self.queue[topicName] = []
-            prev_id = None
-            if len(self.queue):
-                prev_id = self.queue[topicName][-1][0]
-            self.queue[topicName].append([msgID, msg])
-            
-            # TODO: check if the data is already in database
-            if(len(QueueDB.query.filter_by(id = msgID, value = msg).all()) > 0):
-                return
-            obj = QueueDB(id = msgID, value = msg)
-            db.session.add(obj)
-            topic = Topics.query.filter_by(id = self.topics[topicName]).first()
-            if prev_id is None:
-                topic.start_ind = msgID  
-            else:
-                prevMsg = QueueDB.query.filter_by(id = prev_id).first()
-                prevMsg.nxt_id = msgID
-            topic.end_ind = msgID
-            db.session.commit()
+        with app.app_context():
+            if str(BROKER_ID) in ID_LIST:
+                if topicName not in self.queue:
+                    self.queue[topicName] = []
+                prev_id = None
+                if len(self.queue[topicName])>0:
+                    prev_id = self.queue[topicName][-1][0]
+                self.queue[topicName].append([msgID, msg])
+                
+                # TODO: check if the data is already in database
+                if(len(QueueDB.query.filter_by(id = msgID, value = msg).all()) > 0):
+                    return
+                obj = QueueDB(id = msgID, value = msg)
+                db.session.add(obj)
+                topic = Topics.query.filter_by(id = self.topics[topicName]).first()
+                if prev_id is None:
+                    topic.start_ind = msgID  
+                else:
+                    prevMsg = QueueDB.query.filter_by(id = prev_id).first()
+                    prevMsg.nxt_id = msgID
+                topic.end_ind = msgID
+                db.session.commit()
 
 
         #if str(BROKER_ID) in ID_LIST:
@@ -315,19 +317,22 @@ class QueueList(SyncObj):
 
     @replicated
     def getUpdOffset(self, topicName, conID, ID_LIST):
-        if str(BROKER_ID) in ID_LIST:
-            if conID not in self.Offset:
-                self.Offset[conID] = 0
-            offset = self.Offset[conID]
-            if offset < len(self.queue[topicName]):
-                self.Offset[conID] += 1
-                # TODO: check if the data is already in database
-                obj = Consumer.query.filter_by(id = conID).first()
-                obj.offset += 1
-                db.session.commit()
-            else:
-                offset = -1
-            return offset
+        with app.app_context():
+            if str(BROKER_ID) in ID_LIST:
+                if conID not in self.Offset:
+                    self.Offset[conID] = 0
+                    # TODO DB update for offset creation
+                    #return
+                offset = self.Offset[conID]
+                if offset < len(self.queue[topicName]):
+                    self.Offset[conID] += 1
+                    # TODO: check if the data is already in database
+                    obj = Consumer.query.filter_by(id = conID).first()
+                    obj.offset += 1
+                    db.session.commit()
+                else:
+                    offset = -1
+                return offset
 
         #if str(BROKER_ID) in ID_LIST:
         #    index = self.QList[topicName].getUpdOffset(conID)
@@ -335,7 +340,7 @@ class QueueList(SyncObj):
 
 
     def dequeue(self, topicName, conID, ID_LIST):
-        print("Entered Deque")
+        print("Entered Deque",topicName,conID,ID_LIST)
         self.isReady_()
         # Check if topic exists
         if not self.isValidTopic(topicName):
