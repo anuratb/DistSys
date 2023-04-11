@@ -144,12 +144,13 @@ class QueueList(SyncObj):
                 with app.app_context():
                     # TODO: check if the data is already in database
                     print("Adding Topic")
+                    self.topics[topicName] = topicID
+                    self.QLock[topicName] = threading.Lock()
                     if(len(Topics.query.filter_by(id=topicID,value=topicName).all())>0):
                         return
                     db.session.add(Topics(id = topicID, value = topicName))
                     db.session.commit()
-                    self.topics[topicName] = topicID
-                    self.QLock[topicName] = threading.Lock()
+                    
                     print("Added Topic")
 
 
