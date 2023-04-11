@@ -137,8 +137,8 @@ class QueueList(SyncObj):
                 self.queue[topicName] = []
             prev_id = None
             if len(self.queue):
-                prev_id = self.queue[-1][0]
-            self.queue.append([msgID, msg])
+                prev_id = self.queue[topicName][-1][0]
+            self.queue[topicName].append([msgID, msg])
             
             # TODO: check if the data is already in database
             if(len(QueueDB.query.filter_by(id = msgID, value = msg).all()) > 0):
@@ -180,8 +180,6 @@ class QueueList(SyncObj):
         if BROKER_ID in ID_LIST:
             if conID not in self.Offset:
                 self.Offset[conID] = 0
-                # TODO DB update for offset creation
-                return
             offset = self.Offset[conID]
             if offset < len(self.queue[topicName]):
                 self.Offset[conID] += 1

@@ -88,7 +88,6 @@ def create_app(test_config = None):
 
 app, db = create_app()
 
-from api.data_struct  import TopicMetaData,ProducerMetaData,ConsumerMetaData,BrokerMetaData,Docker,Manager
 from api.models import ManagerDB,TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,DockerDB,localProducerDB,localConsumerDB
 
 cntManager = 0
@@ -114,7 +113,7 @@ def create_read_manager():
     globLock.release()
     return url
 
-    
+# TODO Modify DB updates below 
 def load_from_db():
 
     ############################ Write Pending commits to DB ######################################
@@ -217,6 +216,8 @@ def load_from_db():
 
 
 app.app_context().push()
+
+# TODO Modify this
 if (IsWriteManager):
     if(Load_from_db):
         load_from_db()
@@ -229,14 +230,14 @@ if (IsWriteManager):
         db.session.commit()
 
 
-if os.environ['EXECUTE'] == '0':
-    os.environ['EXECUTE'] = '1'
-    if is_leader() and not Load_from_db:
-        # for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
-        #     create_read_manager()
+# if os.environ['EXECUTE'] == '0':
+#     os.environ['EXECUTE'] = '1'
+if is_leader() and not Load_from_db:
+    # for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
+    #     create_read_manager()
 
-        for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
-            getManager().build_run()
+    for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
+        getManager().build_run()
 
 
     
