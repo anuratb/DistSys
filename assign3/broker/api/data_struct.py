@@ -5,7 +5,7 @@ from pysyncobj import SyncObj, replicated
 from pysyncobj.batteries import ReplLockManager
 import os
 BROKER_ID = str(os.environ.get('BROKER_ID'))
-
+glob_lock = threading.Lock()
 QObj = None
 
 
@@ -160,8 +160,9 @@ class QueueList(SyncObj):
         print("Entered Lock Manager")
         topicID = topicID_
         print("get NExt Topic ID working")
+        glob_lock.acquire()
         self.addTopic(topicID, topicName, ID_LIST, sync = True)
-        
+        glob_lock.release()
         return topicID
 
     def listTopics(self):
@@ -234,9 +235,14 @@ class QueueList(SyncObj):
 
 
         nid = conID
+
         #self.QLock[topicName].acquire()
+        glob_lock.acquire()
         self.addConsumer(topicName, nid, ID_LIST, sync = True)
+        glob_lock.release()
         #self.QLock[topicName].release()
+
+
 
         return nid
 
@@ -257,8 +263,11 @@ class QueueList(SyncObj):
 
 
         #self.QLock[topicName].acquire()
+        glob_lock.acquire()
         self.addProducer(topicName, nid, ID_LIST, sync = True)
+        glob_lock.release()
         #self.QLock[topicName].release()
+
 
         return nid
 
@@ -313,8 +322,11 @@ class QueueList(SyncObj):
         nid = msgID
 
         #self.QLock[topicName].acquire()
+        glob_lock.acquire()
         self.addMessage(topicName, nid, msg, ID_LIST, sync = True)
+        glob_lock.release()
         #self.QLock[topicName].release()
+
 
     @replicated
     def getUpdOffset(self, topicName, conID, ID_LIST):
@@ -352,10 +364,13 @@ class QueueList(SyncObj):
         # Check if user is registered for the topic
         if not self.isConRegistered(topicName, conID):
             raise Exception("Error: Invalid consumer ID!")
-        
+
         #self.offsetLock[conID].acquire()
+        glob_lock.acquire()
         index = self.getUpdOffset(topicName, conID, ID_LIST, sync = True)
+        glob_lock.release()
         #self.offsetLock[conID].release()
+
 
         if index == -1:
             raise Exception("There are no new messages!")
