@@ -486,7 +486,7 @@ class Docker:
     lock = threading.Lock()
 
     @classmethod
-    def build_run(cls, path:str):
+    def build_run(cls, path:str,master:str,slave:str):
         cls.lock.acquire()
         curr_id = cls.cnt
         cls.cnt += 1
@@ -536,9 +536,21 @@ class Docker:
         docker_id = 0
         print("broker"+str(curr_id),db_uri,docker_img_broker)
         os.system("docker rm -f broker"+str(curr_id))
-        cmd = "docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} -e BROKER_ID={}  {}".format("broker"+str(curr_id),db_uri,curr_id,docker_img_broker)
+        """
+
+        docker run --network host --publish-all -it 
+        -e DB_URI="postgresql+psycopg2://$user:$pass@$IP:5432/$DB_NAME" 
+        -e BROKER_ID=$4 -e SELF_ADDR=$6 -e SLAVE_ADDR=$7 broker
+        """
+        slave_ips= ""
+        for i,itr in enumerate(slave):
+            if i+1==len(slave):
+                slave_ips += itr 
+            else :
+                slave_ips += itr + "$"
+        cmd = f"docker run -net brokernet --name broker{str(curr_id)} -d -p 0:5124 --expose 5124 -e DB_URI={db_uri} -e BROKER_ID={curr_id} -e SELF_ADDR={master} -e SLAVE_ADDR={slave_ips} {docker_img_broker}"
         os.system(cmd)
-        print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
+        #print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
         url = 'http://' + obj.decode('utf-8').strip() + ':5124'
         print(url)
