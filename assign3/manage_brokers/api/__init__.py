@@ -13,7 +13,11 @@ from flask_executor import Executor
 from apscheduler.schedulers.background import BackgroundScheduler
 
 APP_URL = "http://127.0.0.1:5124"
+ip_list1 = [x+1 for x in range(os.environ["NUMBER_OF_BROKERS"])]
+ip_list2 = [x+len(ip_list1)+1 for x in range(os.environ["NUMBER_OF_MANAGERS"])]
 
+ip_list1 = [f"172.18.0.{x}" for x in ip_list1]
+ip_list2 = [f"172.18.0.{x}" for x in ip_list2]
 dotenv_file = dotenv.find_dotenv()
 dotenv.load_dotenv(dotenv_file)
 
@@ -226,9 +230,9 @@ if os.environ['EXECUTE'] == '0':
         for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
             create_read_manager()
 
-        for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
-
-            broker_obj = Docker.build_run("../../broker")
+        for i in range(int(os.environ["NUMBER_OF_BROKERS"])):
+            temp = [x for x in ip_list1 if x!=ip_list1[i]]
+            broker_obj = Docker.build_run("../../broker",ip_list1[i],temp)
             #Manager.lock.acquire()
             Manager.brokers[broker_obj.brokerID] = broker_obj
             #Manager.lock.release()

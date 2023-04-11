@@ -122,9 +122,9 @@ class QueueList(SyncObj):
     def __init__(self, selfAddr, otherAddrs):
         super().__init__(selfAddr, otherAddrs)
         # topicName -> Lock
-        self.QLock = {}
+        #self.QLock = {}
         # ConsumerID -> Lock
-        self.offsetLock = {}
+        #self.offsetLock = {}
         # topicName to list of mssges
         self.queue = {}
         # Key: Consumer ID, Value: (offset in the topic queue)
@@ -145,7 +145,7 @@ class QueueList(SyncObj):
                     # TODO: check if the data is already in database
                     print("Adding Topic")
                     self.topics[topicName] = topicID
-                    self.QLock[topicName] = threading.Lock()
+                    #self.QLock[topicName] = threading.Lock()
                     if(len(Topics.query.filter_by(id=topicID,value=topicName).all())>0):
                         return
                     db.session.add(Topics(id = topicID, value = topicName))
@@ -188,7 +188,7 @@ class QueueList(SyncObj):
             #    self.QList[topicName].subscribeConsumer(topicName, conID)
             #    self.QList[topicName].addOffset(conID)
 
-                self.offsetLock[conID] = threading.Lock()
+                #self.offsetLock[conID] = threading.Lock()
 
                 # TODO: check if the data is already in database
                 if(len(Consumer.query.filter_by(id = conID).all()) > 0):
@@ -201,7 +201,7 @@ class QueueList(SyncObj):
 
                 # self.QList[topicName].subscribeConsumer(topicName, conID)
                 # self.QList[topicName].addOffset(conID)
-                # self.offsetLock[conID] = threading.Lock()
+                # #self.offsetLock[conID] = threading.Lock()
 
     @replicated
     def addProducer(self, topicName, prodID, ID_LIST):
@@ -211,7 +211,7 @@ class QueueList(SyncObj):
                 if topicName not in self.producerList:
                     self.producerList[topicName] = []
                 self.producerList[topicName].append(prodID)
-                self.offsetLock[prodID] = threading.Lock()
+                #self.offsetLock[prodID] = threading.Lock()
 
                 # TODO: check if the data is already in database
                 if(len(Producer.query.filter_by(id = prodID).all()) > 0):
@@ -235,11 +235,14 @@ class QueueList(SyncObj):
 
 
         nid = conID
-        self.QLock[topicName].acquire()
+
+        #self.QLock[topicName].acquire()
         glob_lock.acquire()
         self.addConsumer(topicName, nid, ID_LIST, sync = True)
         glob_lock.release()
-        self.QLock[topicName].release()
+        #self.QLock[topicName].release()
+
+
 
         return nid
 
@@ -259,11 +262,12 @@ class QueueList(SyncObj):
         nid = prodID
 
 
-        self.QLock[topicName].acquire()
+        #self.QLock[topicName].acquire()
         glob_lock.acquire()
         self.addProducer(topicName, nid, ID_LIST, sync = True)
         glob_lock.release()
-        self.QLock[topicName].release()
+        #self.QLock[topicName].release()
+
 
         return nid
 
@@ -275,6 +279,7 @@ class QueueList(SyncObj):
                 if topicName not in self.queue:
                     self.queue[topicName] = []
                 prev_id = None
+                print(self.queue[topicName])
                 if len(self.queue[topicName])>0:
                     prev_id = self.queue[topicName][-1][0]
                 self.queue[topicName].append([msgID, msg])
@@ -316,11 +321,12 @@ class QueueList(SyncObj):
 
         nid = msgID
 
-        self.QLock[topicName].acquire()
+        #self.QLock[topicName].acquire()
         glob_lock.acquire()
         self.addMessage(topicName, nid, msg, ID_LIST, sync = True)
         glob_lock.release()
-        self.QLock[topicName].release()
+        #self.QLock[topicName].release()
+
 
     @replicated
     def getUpdOffset(self, topicName, conID, ID_LIST):
@@ -334,8 +340,10 @@ class QueueList(SyncObj):
                 if offset < len(self.queue[topicName]):
                     self.Offset[conID] += 1
                     # TODO: check if the data is already in database
+
                     obj = Consumer.query.filter_by(id = conID).first()
-                    obj.offset += 1
+                    if(obj.offset != offset):
+                        obj.offset =offset
                     db.session.commit()
                 else:
                     offset = -1
@@ -356,12 +364,13 @@ class QueueList(SyncObj):
         # Check if user is registered for the topic
         if not self.isConRegistered(topicName, conID):
             raise Exception("Error: Invalid consumer ID!")
-        
-        self.offsetLock[conID].acquire()
+
+        #self.offsetLock[conID].acquire()
         glob_lock.acquire()
         index = self.getUpdOffset(topicName, conID, ID_LIST, sync = True)
         glob_lock.release()
-        self.offsetLock[conID].release()
+        #self.offsetLock[conID].release()
+
 
         if index == -1:
             raise Exception("There are no new messages!")

@@ -156,7 +156,7 @@ def load_from_db():
 app.app_context().push()
 #from api.data_struct import Queue
 #Queue.clear()
-#db.drop_all()
+db.drop_all()
 db.create_all()
 #load_from_db()
 
