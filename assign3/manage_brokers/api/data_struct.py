@@ -235,8 +235,8 @@ class ConsumerMetaData():
         ConsID= localCons.local_id
         partition = localCons.partition
         subbedTopicName = TopicMetaData.getSubbedTopicName(topicName, partition)
-        
-        return TopicMetaData.getBrokerList(subbedTopicName), ConsID, partition
+        return TopicBroker.query.filter_by(topic=topicName,partition=partition).first().broker_id, ConsID, partition
+        #return TopicMetaData.getBrokerList(subbedTopicName), ConsID, partition
 
 class Manager:
     
