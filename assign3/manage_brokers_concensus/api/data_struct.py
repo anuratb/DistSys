@@ -118,26 +118,6 @@ class Manager(SyncObj):
         return oldVal
 
     @replicated
-    def addBroker(self, db_uri, url, curr_id, docker_id):
-        brokerObj = BrokerMetaData(db_uri, url, "broker" + str(curr_id), curr_id, docker_id)
-        self.brokers[brokerObj.brokerID] = brokerObj
-        ################# DB UPDATES ########################
-        obj = BrokerMetaDataDB(
-            broker_id = brokerObj.brokerID, 
-            url = brokerObj.url,
-            db_uri = brokerObj.DB_URI,
-            docker_name = brokerObj.docker_name,
-            last_beat = brokerObj.last_beat,
-            docker_id = brokerObj.docker_id,
-        )
-        file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.url,broker_obj.DB_URI,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
-        db.session.add(obj)
-        db.session.commit()
-        #####################################################
-
-        return brokerObj
-
-    @replicated
     def addTopicRepl(self, topicID, topicName, numPartitions, assignedBrokers):
         self.Topics[topicName] = [topicID, numPartitions, 0, threading.Lock()]
         partitionNo = 1
@@ -168,7 +148,6 @@ class Manager(SyncObj):
     @replicated
     def addSubscriptionRepl(self, clientID, topicName, clientIDs, isCon):
         K = clientID + "#" + topicName
-        self.rrIndex[isCon][K] = 0
         self.rrIndexLock[isCon][K] = threading.Lock()
         self.subscription[isCon][K] = clientIDs
 
@@ -218,12 +197,15 @@ class Manager(SyncObj):
 
     @replicated
     def getUpdRRIndex(self, K, topic, isCon):
+        if K not in self.rrIndex[isCon]:
+            self.rrIndex[isCon][K] = 0
+
         index = self.rrIndex[isCon][K]
         self.rrIndex[isCon][K] += 1
 
         # TODO DB updates
         obj = TopicDB.query.filter_by(topicName = topic).first()
-        obj.rrindex = obj.rrindex + 1            
+        obj.rrindex = obj.rrindex + 1
         db.session.commit()
 
         return index
@@ -399,19 +381,42 @@ class Manager(SyncObj):
         url = 'http://' + obj.decode('utf-8').strip() + ':5124'
         print(url)
 
-        getManager().addBroker(db_uri, url, curr_id, docker_id, sync = True)
+        self.addOrRestartBroker(db_uri, url, curr_id, docker_id, sync = True)
 
     @replicated
     def restartBrokerRepl(self, url, brokerId, docker_id):
-        self.brokers[brokerId].url = url
-        self.brokers[brokerId].docker_id = docker_id
+        pass
 
-        with app.app_context():
+    @replicated
+    def addOrRestartBroker(self, db_uri, url, curr_id, docker_id, restart = False):
+        if restart:
+            self.brokers[curr_id].url = url
+            self.brokers[curr_id].docker_id = docker_id
+
+            with app.app_context():
+                ################# DB UPDATES ########################
+                BrokerMetaDataDB.query.filter_by(broker_id = curr_id).update(dict(url = url, docker_id = docker_id))
+                # file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(curr_id, oldBrokerObj.docker_name,url,docker_id))
+                db.session.commit()
+                #####################################################
+        else:
+            brokerObj = BrokerMetaData(db_uri, url, "broker" + str(curr_id), curr_id, docker_id)
+            self.brokers[brokerObj.brokerID] = brokerObj
             ################# DB UPDATES ########################
-            BrokerMetaDataDB.query.filter_by(broker_id = brokerId).update(dict(url = url,docker_id = docker_id))
-            file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(brokerId,oldBrokerObj.docker_name,url,docker_id))
+            obj = BrokerMetaDataDB(
+                broker_id = brokerObj.brokerID, 
+                url = brokerObj.url,
+                db_uri = brokerObj.DB_URI,
+                docker_name = brokerObj.docker_name,
+                last_beat = brokerObj.last_beat,
+                docker_id = brokerObj.docker_id,
+            )
+            file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.url,broker_obj.DB_URI,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
+            db.session.add(obj)
             db.session.commit()
             #####################################################
+
+            return brokerObj
 
     def restartBroker(self, brokerId):
         if not is_leader(): return
@@ -435,13 +440,12 @@ class Manager(SyncObj):
         url = get_url(oldBrokerObj.docker_name)
         url = 'http://' + url + ':5124'
 
-        self.restartBrokerRepl(url, brokerId, docker_id, sync = True)
+        self.addOrRestartBroker(url, None, brokerId, docker_id, True, sync = True)
 
         self.brokers[brokerId].lock.release()
         print("HELLL")
 
-    @classmethod
-    def restartManager(cls, managerId):
+    def restartManager(self, managerId):
         # TODO Ping the broker before creating one
         print("HELLL")
         oldManagerObj = ManagerDB.query.filter_by(id = managerId).first()
