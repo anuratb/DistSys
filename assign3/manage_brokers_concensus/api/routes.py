@@ -129,22 +129,27 @@ def register_consumer():
     partition = request.get_json().get("partition")
     try:
         if partition:
-            ID_LIST = getManager().getBrokerList(topic, int(partition))
-            brokerUrl = getManager().getBrokerUrlFromID(ID_LIST[int(random() * len(ID_LIST))])
-            #conID = getManager().getBrokerConID()
+
             conID = getManager().Updates(
                 "getBrokerConID",
                 sync=True
             )
-            return requests.post(
-                brokerUrl + "/consumer/register", 
-                json = {
-                    "topic": topic,
-                    "partition": partition,
-                    "ID": conID,
-                    "ID_LIST": ID_LIST
-                }
-            ).json()
+            ID_LIST = getManager().getBrokerList(topic, int(partition))
+            brokerID = getManager().getAliveBroker(ID_LIST)
+            if brokerID:
+                brokerUrl = getManager().getBrokerUrlFromID(brokerID)
+                return requests.post(
+                    brokerUrl + "/consumer/register", 
+                    json = {
+                        "topic": topic,
+                        "partition": partition,
+                        "ID": conID,
+                        "ID_LIST": ID_LIST
+                    }
+                ).json()
+            
+            raise Exception("Service currently unavailable")
+
         else:
             # Subscribe to all partitions of a topic
             retID = getManager().registerClientForAllPartitions("/consumer/register", topic, 1)
@@ -188,20 +193,25 @@ def register_producer():
     try:
         if partition:
             ID_LIST = getManager().getBrokerList(topic, int(partition))
-            brokerUrl = getManager().getBrokerUrlFromID(ID_LIST[int(random() * len(ID_LIST))])
+
             prodID = getManager().Updates(
                 "getBrokerProdID",
                 sync=True
             )
-            return requests.post(
-                brokerUrl + "/producer/register", 
-                json = {
-                    "topic": topic,
-                    "partition": partition,
-                    "ID": prodID,
-                    "ID_LIST": ID_LIST
-                }
-            ).json()
+            brokerID = getManager().getAliveBroker(ID_LIST)
+            if brokerID:
+                brokerUrl = getManager().getBrokerUrlFromID(brokerID)
+                return requests.post(
+                    brokerUrl + "/producer/register", 
+                    json = {
+                        "topic": topic,
+                        "partition": partition,
+                        "ID": prodID,
+                        "ID_LIST": ID_LIST
+                    }
+                ).json()
+            raise Exception("Service currently unavailable")
+
         else:
             # Subscribe to all partitions of a topic
             retID = getManager().registerClientForAllPartitions("/producer/register", topic, 0)
@@ -257,7 +267,9 @@ def enqueue():
         else:
             ID_LIST = getManager().getBrokerList(topic, int(partition))
         
-        brokerID = ID_LIST[int(random() * len(ID_LIST))]
+        brokerID = getManager().getAliveBroker(ID_LIST)
+        if not brokerID:
+            raise Exception("Service currently unavailable")
         brokerUrl = getManager().getBrokerUrlFromID(brokerID)
         res = requests.post(
             brokerUrl + "/producer/produce",
@@ -276,7 +288,7 @@ def enqueue():
             requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
             return {
                 "status": "Failure",
-                "message": "Service currently unavailable. Try again later."
+                "message": "Service currently unavailable"
             }
         elif(res.json().get("status") == "Success"):
             return {
@@ -342,7 +354,9 @@ def dequeue():
             if from_leader:
                 if consumer_id[0] == '$':
                     ID_LIST, localConID, partition = getManager().getRRIndex(consumer_id, topic, 1)
-                    brokerID = ID_LIST[int(random() * len(ID_LIST))]
+                    brokerID = getManager().getAliveBroker(ID_LIST)
+                    if not brokerID:
+                        raise Exception("Service currently unavailable")
                     brokerUrl = getManager().getBrokerUrlFromID(brokerID)
                     res = requests.get(
                         brokerUrl + "/consumer/consume",
@@ -358,7 +372,7 @@ def dequeue():
                         requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
                         return {
                             "status": "Failure",
-                            "message": "Service currently unavailable. Try again later."
+                            "message": "Service currently unavailable"
                         }
                     elif(res.json().get("status") == "Success"):
                         msg = res.json().get("message")
@@ -371,7 +385,9 @@ def dequeue():
                 else:
                     partition = request.args.get('partition')
                     ID_LIST = getManager().getBrokerList(topic, partition)
-                    brokerID = ID_LIST[int(random() * len(ID_LIST))]
+                    brokerID = getManager().getAliveBroker(ID_LIST)
+                    if not brokerID:
+                        raise Exception("Service currently unavailable")
                     brokerUrl = getManager().getBrokerUrlFromID(brokerID)
                     url_with_param = f"{brokerUrl}/consumer/consume?topic={topic}&consumer_id={consumer_id}&partition={partition}"
                     for id in ID_LIST:
