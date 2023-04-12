@@ -18,6 +18,17 @@ file = open('LOG_path.txt','w')
 
 manager = None
 
+# List of locks
+topicLock = threading.Lock()
+brokerLock = threading.Lock()
+brokerMetaDataLock = {}
+brokerTopicIDLock = threading.Lock()
+msgIDLock = threading.Lock()
+brokerConIDLock = threading.Lock()
+brokerProdIDLock = threading.Lock()
+subscriptionLock = [threading.Lock(), threading.Lock()]
+rrIndexLock = [{}, {}]
+
 class BrokerMetaData:
     def __init__(self, DB_URI = '', url = '', name = '', brokerID = 0,docker_id = 0):
         self.DB_URI = DB_URI
@@ -26,7 +37,6 @@ class BrokerMetaData:
         self.last_beat = time.monotonic()
         self.brokerID = brokerID
         self.docker_id = docker_id
-        self.lock = threading.Lock()
         self.port = 8000 #initial port for raft
     
 class Manager(SyncObj):
@@ -38,12 +48,10 @@ class Manager(SyncObj):
         self.TopicID = 0
         # A map from partiton#topicName to the corresponding list of brokerIDs (i.e. replica)
         self.PartitionBroker = {}
-        self.lock = threading.Lock()
         
         # A map from broker ID to broker Metadata
         self.brokers = {}
         self.brokerID = 0
-        self.brokerLock = threading.Lock()
         self.Managers = {}
 
         # Only stores those clients that subscribe to enitre topic
@@ -54,51 +62,43 @@ class Manager(SyncObj):
         # Map from clientID#TopicName to round-robin index
         self.rrIndex = [{}, {}]
         self.clientID = [0, 0]
-        self.subscriptionLock = [threading.Lock(), threading.Lock()]
-        self.rrIndexLock = [{}, {}]
 
         # Broker level IDs
         self.brokerTopicID = 0
-        self.brokerTopicIDLock = threading.Lock()
         self.msgID = 0
-        self.msgIDLock = threading.Lock()
         self.brokerConID = 0
-        self.brokerConIDLock = threading.Lock()
         self.brokerProdID = 0
-        self.brokerProdIDLock = threading.Lock()
 
     @replicated
     def getBrokerProdID(self):
-        self.brokerProdIDLock.acquire()
         oldVal = self.brokerProdID
         self.brokerProdID += 1
-        self.brokerProdIDLock.release()
         return oldVal
 
     @replicated
     def getBrokerConID(self):
-        self.brokerConIDLock.acquire()
         oldVal = self.brokerConID
         self.brokerConID += 1
-        self.brokerConIDLock.release()
         return oldVal
 
     @replicated
     def getBrokerTopicID(self):
-        self.brokerTopicIDLock.acquire()
         oldVal = self.brokerTopicID
         self.brokerTopicID += 1
-        self.brokerTopicIDLock.release()
         return oldVal
 
     @replicated
     def getMsgID(self):
-        self.msgIDLock.acquire()
         oldVal = self.msgID
         self.msgID += 1
-        self.msgIDLock.release()
         return oldVal
 
+    def getMsgIDWrapper(self):
+        msgIDLock.acquire()
+        val = self.getMsgID(sync = True)
+        msgIDLock.release()
+        return val
+        
     @replicated
     def getTopicID(self):
         oldVal = self.TopicID
@@ -148,7 +148,7 @@ class Manager(SyncObj):
     @replicated
     def addSubscriptionRepl(self, clientID, topicName, clientIDs, isCon):
         K = clientID + "#" + topicName
-        self.rrIndexLock[isCon][K] = threading.Lock()
+        rrIndexLock[isCon][K] = threading.Lock()
         self.subscription[isCon][K] = clientIDs
 
         ################## DB Updates #####################
@@ -182,9 +182,9 @@ class Manager(SyncObj):
         ###################################################
 
     def addSubscription(self, clientIDs, topicName, isCon):
-        self.subscriptionLock[isCon].acquire()
+        subscriptionLock[isCon].acquire()
         clientID = "$" + str(self.getCliendID(isCon, sync = True))
-        self.subscriptionLock[isCon].release()
+        subscriptionLock[isCon].release()
        
         self.addSubscriptionRepl(clientID, topicName, clientIDs, isCon, sync = True)
         return clientID
@@ -214,9 +214,9 @@ class Manager(SyncObj):
     '''
     def getRRIndex(self, clientID, topicName, isCon):
         K = clientID + '#' + topicName
-        self.rrIndexLock[isCon][K].acquire()
+        rrIndexLock[isCon][K].acquire()
         rrIndex = self.getUpdRRIndex(K, isCon, topicName, sync = True)
-        self.rrIndexLock[isCon][K].release()
+        rrIndexLock[isCon][K].release()
 
         globCli = None
         if isCon:
@@ -250,9 +250,9 @@ class Manager(SyncObj):
 
         file.write("INFO Choosing {} partitions for topic {}".format(numPartitions, topicName))
 
-        self.lock.acquire()
+        topicLock.acquire()
         if topicName in self.Topics:
-            self.lock.release()
+            topicLock.release()
             raise Exception(f'Topicname: {topicName} already exists')
         topicID = self.getTopicID(sync = True)
         # Choose the brokers
@@ -261,7 +261,7 @@ class Manager(SyncObj):
         if numPartitions == 0:
             raise Exception("Service currently unavailable. Please try again later.")
         self.Topics[topicName] = []
-        self.lock.release()
+        topicLock.release()
 
         self.addTopicRepl(topicID, topicName, numPartitions, assignedBrokers, sync = True)
 
@@ -290,7 +290,9 @@ class Manager(SyncObj):
             brokerTopicName = str(actualPartitions + 1) + '#' + topicName
 
             url = self.brokers[brokerSet[0]].url
+            brokerTopicIDLock.acquire()
             brokerTopicID = self.getBrokerTopicID(sync = True)
+            brokerTopicIDLock.release()
             # Send Post request to any one of the replicas
             res = requests.post(str(url) + "/topics", 
                 json = {
@@ -323,13 +325,17 @@ class Manager(SyncObj):
 
             brokerCliID = None
             if not isCon:
-                brokerCliID = self.getBrokerProdID()
+                brokerProdIDLock.acquire()
+                brokerCliID = self.getBrokerProdID(sync = True)
+                brokerProdIDLock.release()
             else:
-                brokerCliID = self.getBrokerConID()
+                brokerConIDLock.acquire()
+                brokerCliID = self.getBrokerConID(sync = True)
+                brokerConIDLock.release()
 
             res = requests.post(
                 brokerUrl + url,
-                json={
+                json = {
                     "topic": topicName,
                     "partition": str(i),
                     "ID_LIST": brokerList,
@@ -363,9 +369,9 @@ class Manager(SyncObj):
 
 
     def build_run(self):
-        self.brokerLock.acquire()
+        brokerLock.acquire()
         curr_id = getManager().getBrokerID()
-        self.brokerLock.release()
+        brokerLock.release()
         
         broker_nme = "broker" + str(curr_id)
    
@@ -402,6 +408,7 @@ class Manager(SyncObj):
         else:
             brokerObj = BrokerMetaData(db_uri, url, "broker" + str(curr_id), curr_id, docker_id)
             self.brokers[brokerObj.brokerID] = brokerObj
+            brokerMetaDataLock[curr_id] = threading.Lock()
             ################# DB UPDATES ########################
             obj = BrokerMetaDataDB(
                 broker_id = brokerObj.brokerID, 
@@ -425,13 +432,13 @@ class Manager(SyncObj):
 
         db_uri = oldBrokerObj.DB_URI
 
-        self.brokers[brokerId].lock.acquire()
+        brokerMetaDataLock[brokerId].acquire()
         # Check if the server is still dead
         print("HELLL")
         val = is_server_running(oldBrokerObj.url)
         if val:
             # Server already restarted
-            self.brokers[brokerId].lock.release()
+            brokerMetaDataLock[brokerId].release()
             return
         print("HELLL")
         docker_id = 0
@@ -442,7 +449,7 @@ class Manager(SyncObj):
 
         self.addOrRestartBroker(url, None, brokerId, docker_id, True, sync = True)
 
-        self.brokers[brokerId].lock.release()
+        brokerMetaDataLock[brokerId].release()
         print("HELLL")
 
     def restartManager(self, managerId):
