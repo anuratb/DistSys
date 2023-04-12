@@ -125,7 +125,7 @@ class BrokerMetaDataDB(db.Model):
     localProd = db.relationship('localProducerDB',backref='broker',lazy=True)
     localCons = db.relationship('localConsumerDB',backref='broker',lazy=True)
     raft_url = db.Column(db.String,nullable=False)
-    sync_url = db.Column(db.String,nullable=False)
+    sync_url = db.Column(db.String)
 
 
 replication_table = db.Table('user_group',

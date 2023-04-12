@@ -30,14 +30,14 @@ subscriptionLock = [threading.Lock(), threading.Lock()]
 rrIndexLock = [{}, {}]
 
 class BrokerMetaData:
-    def __init__(self, DB_URI = '', url = '', name = '', brokerID = 0,docker_id = 0):
+    def __init__(self, DB_URI = '', url = '', name = '', brokerID = 0,docker_id = 0,raft_url=''):
         self.DB_URI = DB_URI
         self.url = url
         self.docker_name = name
         self.last_beat = time.monotonic()
         self.brokerID = brokerID
         self.docker_id = docker_id
-
+        self.raft_url = raft_url
         self.port = 8500 #initial port for raft
 
     
@@ -45,6 +45,7 @@ class Manager(SyncObj):
 
     def __init__(self, selfAddr, otherAddrs):
         super().__init__(selfAddr, otherAddrs) 
+        print(selfAddr,otherAddrs)
         # Map from topicName to {topicID, numPartitions, rrindex, lock}
         self.Topics = {}
         self.TopicID = 0
@@ -77,7 +78,9 @@ class Manager(SyncObj):
             oldVal = self.brokerProdID
             self.brokerProdID += 1
             return oldVal
-
+        elif type=='foo':
+            print( "Fooooo")
+            return True
         elif type == 'getBrokerConID':
             oldVal = self.brokerConID
             self.brokerConID += 1
@@ -110,85 +113,87 @@ class Manager(SyncObj):
             return oldVal
 
         elif type == 'addTopicRepl':
-            topicName = data['topicName_']
-            topicID = data['topicID_']
-            numPartitions = data['numPartitions_']
-            assignedBrokers = data['assignedBrokers_']
+            with app.app_context():
+                topicName = data['topicName_']
+                topicID = data['topicID_']
+                numPartitions = data['numPartitions_']
+                assignedBrokers = data['assignedBrokers_']
 
-            self.Topics[topicName] = [topicID, numPartitions, 0, threading.Lock()]
-            partitionNo = 1
-            for K in assignedBrokers.keys():
-                self.PartitionBroker[K] = assignedBrokers[K]
+                self.Topics[topicName] = [topicID, numPartitions, 0, threading.Lock()]
+                partitionNo = 1
+                for K in assignedBrokers.keys():
+                    self.PartitionBroker[K] = assignedBrokers[K]
 
-                # TODO assignedBrokers[i] is now a list... Modify DB updates
-                ####################### DB UPDATES ###########################
-                # db.session.add(
-                #     TopicBroker(
-                #         topic = topicName,
-                #         brokerID = assignedBrokers[K],
-                #         partition = partitionNo
-                #     )
-                # )
-                # file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, assignedBrokers[K], partitionNo))
-                # partitionNo += 1
-                obj  = TopicBroker(
-                    topic=topicName,
-                    partition=partitionNo
-                )
-                for itr in assignedBrokers[K]:
-                    obj.brokerID.append(BrokerMetaDataDB.query.filter_by(broker_id=itr).first())
+                    # TODO assignedBrokers[i] is now a list... Modify DB updates
+                    ####################### DB UPDATES ###########################
+                    # db.session.add(
+                    #     TopicBroker(
+                    #         topic = topicName,
+                    #         brokerID = assignedBrokers[K],
+                    #         partition = partitionNo
+                    #     )
+                    # )
+                    # #file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, assignedBrokers[K], partitionNo))
+                    # partitionNo += 1
+                    obj  = TopicBroker(
+                        topic=topicName,
+                        partition=partitionNo
+                    )
+                    for itr in assignedBrokers[K]:
+                        obj.brokerID.append(BrokerMetaDataDB.query.filter_by(broker_id=itr).first())
+                    db.session.add(obj)
+                    #file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, assignedBrokers[K], partitionNo))
+                    partitionNo += 1
+                
+                db.session.commit()
+
+                ############### DB update ###############
+                obj = TopicDB(topicName = topicName, numPartitions = numPartitions, topic_id = topicID, rrindex = 0)
+                #file.write("db.session.add(TopicDB(topicName={},numPartitions={},topic_id={}, rrindex=0))".format(topicName,numPartitions,topicID))
                 db.session.add(obj)
-                file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, assignedBrokers[K], partitionNo))
-                partitionNo += 1
-            
-            db.session.commit()
-
-            ############### DB update ###############
-            obj = TopicDB(topicName = topicName, numPartitions = numPartitions, topic_id = topicID, rrindex = 0)
-            file.write("db.session.add(TopicDB(topicName={},numPartitions={},topic_id={}, rrindex=0))".format(topicName,numPartitions,topicID))
-            db.session.add(obj)
-            db.session.commit()
-            #########################################
+                db.session.commit()
+                #########################################
 
         elif type == 'addSubscriptionRepl':
-            clientID = data['clientID_']
-            clientIDs = data['clientIDs_']
-            isCon = data['isCon_']
-            topicName = data['topicName_']
+            with app.app_context():
+                clientID = data['clientID_']
+                clientIDs = data['clientIDs_']
+                isCon = data['isCon_']
+                topicName = data['topicName_']
 
-            K = clientID + "#" + topicName
-            rrIndexLock[isCon][K] = threading.Lock()
-            self.subscription[isCon][K] = clientIDs
+                K = clientID + "#" + topicName
+                rrIndexLock[isCon][K] = threading.Lock()
+                self.subscription[isCon][K] = clientIDs
 
-            ################## DB Updates #####################
-            glob_cli = None
-            if isCon:
-                glob_cli = globalConsumerDB(glob_id = clientID, topic = topicName, rrindex = 0, brokerCnt = len(clientIDs))
-                file.write("db.session.add(globalConsumerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
-            else:
-                glob_cli = globalProducerDB(glob_id = clientID, topic = topicName, rrindex = 0, brokerCnt = len(clientIDs))
-                file.write("db.session.add(globalProducerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
-            local_clis = []
-            for row in clientIDs:
-                broker_id = row[0] 
-                prod_ids = row[1:]
-                
-                for prod_id, partition in prod_ids:
-                    if isCon:
-                        local_clis.append(localConsumerDB(local_id = prod_id, broker_id = broker_id, glob_id = clientID, partition = partition))
-                        file.write("db.session.add(localConsumerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
-                    else:
-                        local_clis.append(localProducerDB(local_id = prod_id, broker_id = broker_id, glob_id = clientID, partition = partition))
-                        file.write("db.session.add(localProducerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
-        
-            cur_rrindex = random() * len(local_clis)
-            glob_cli.rrindex = cur_rrindex
-            db.session.add(glob_cli)
+                ################## DB Updates #####################
+                glob_cli = None
+                if isCon:
+                    glob_cli = globalConsumerDB(glob_id = clientID, topic = topicName, rrindex = 0, brokerCnt = len(clientIDs))
+                    #file.write("db.session.add(globalConsumerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
+                else:
+                    glob_cli = globalProducerDB(glob_id = clientID, topic = topicName, rrindex = 0, brokerCnt = len(clientIDs))
+                    #file.write("db.session.add(globalProducerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
+                local_clis = []
+                for row in clientIDs:
+                    broker_id = row[0] 
+                    prod_ids = row[1:]
+                    
+                    for prod_id, partition in prod_ids:
+                        if isCon:
+                            local_clis.append(localConsumerDB(local_id = prod_id, broker_id = broker_id, glob_id = clientID, partition = partition))
+                            #file.write("db.session.add(localConsumerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
+                        else:
+                            local_clis.append(localProducerDB(local_id = prod_id, broker_id = broker_id, glob_id = clientID, partition = partition))
+                            #file.write("db.session.add(localProducerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
             
-            for local_cli in local_clis:
-                db.session.add(local_cli)
-            db.session.commit()
-            ###################################################
+                cur_rrindex = random() * len(local_clis)
+                glob_cli.rrindex = cur_rrindex
+                db.session.add(glob_cli)
+                
+                for local_cli in local_clis:
+                    db.session.add(local_cli)
+                db.session.commit()
+                ###################################################
 
         elif type == 'getUpdRRIndex':
             isCon = data['isCon_']
@@ -214,7 +219,7 @@ class Manager(SyncObj):
             url = data['url_']
             docker_id = data['docker_id_']
             db_uri = data['db_uri_']
-
+            raft_url = data['raft_url_']
             if restart:
                 self.brokers[curr_id].url = url
                 self.brokers[curr_id].docker_id = docker_id
@@ -226,24 +231,30 @@ class Manager(SyncObj):
                     db.session.commit()
                     #####################################################
             else:
-                brokerObj = BrokerMetaData(db_uri, url, "broker" + str(curr_id), curr_id, docker_id)
+                print("start Called",data)
+
+                brokerObj = BrokerMetaData(db_uri, url, "broker" + str(curr_id), curr_id, docker_id,raft_url)
                 self.brokers[brokerObj.brokerID] = brokerObj
                 brokerMetaDataLock[curr_id] = threading.Lock()
                 ################# DB UPDATES ########################
-                obj = BrokerMetaDataDB(
-                    broker_id = brokerObj.brokerID, 
-                    url = brokerObj.url,
-                    db_uri = brokerObj.DB_URI,
-                    docker_name = brokerObj.docker_name,
-                    last_beat = brokerObj.last_beat,
-                    docker_id = brokerObj.docker_id,
-                )
-                file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(brokerObj.brokerID, brokerObj.url,brokerObj.DB_URI,brokerObj.docker_name,brokerObj.last_beat,brokerObj.docker_id))
-                db.session.add(obj)
-                db.session.commit()
-                #####################################################
+                with app.app_context():
+                    obj = BrokerMetaDataDB(
+                        broker_id = brokerObj.brokerID, 
+                        url = brokerObj.url,
+                        db_uri = brokerObj.DB_URI,
+                        docker_name = brokerObj.docker_name,
+                        last_beat = brokerObj.last_beat,
+                        docker_id = brokerObj.docker_id,
+                        raft_url= brokerObj.raft_url
 
-                return brokerObj
+                    )
+                    db.session.add(obj)
+                    db.session.commit()
+                #####################################################
+                print("HASDSDSADS")
+
+
+
 
 
     def getMsgIDWrapper(self):
@@ -491,24 +502,35 @@ class Manager(SyncObj):
         #TopicMetaData.lock.aquire()
         #TopicMetaData.addBrokerUrl(url)
         #TopicMetaData.lock.release()
-        broker_obj = BrokerMetaData(db_uri,url,"broker"+str(curr_id),curr_id,docker_id)
+        # broker_obj = BrokerMetaData(db_uri,url,"broker"+str(curr_id),curr_id,docker_id,raft_url)
         ################# DB UPDATES ########################
         
-        obj = BrokerMetaDataDB(
-            broker_id = broker_obj.brokerID, 
-            url = broker_obj.url,
-            db_uri = broker_obj.DB_URI,
-            docker_name = broker_obj.docker_name,
-            last_beat = broker_obj.last_beat,
-            docker_id = broker_obj.docker_id,
-            raft_url = raft_url,
-            sync_url = sync_url
-        )
-        file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.url,broker_obj.DB_URI,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
-        db.session.add(obj)
-        db.session.commit()
+        # obj = BrokerMetaDataDB(
+        #     broker_id = broker_obj.brokerID, 
+        #     url = broker_obj.url,
+        #     db_uri = broker_obj.DB_URI,
+        #     docker_name = broker_obj.docker_name,
+        #     last_beat = broker_obj.last_beat,
+        #     docker_id = broker_obj.docker_id,
+        #     raft_url = raft_url,
+        #     sync_url = sync_url
+        # )
+        # #file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.url,broker_obj.DB_URI,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
+        # db.session.add(obj)
+        # db.session.commit()
         #####################################################
-        return broker_obj
+        data = {
+            'restart_': False,
+            'curr_id_': curr_id,
+            'url_': url,
+            'docker_id_': docker_id,
+            'db_uri_': db_uri,
+            'raft_url_' :raft_url
+        }
+        self.Updates(
+            'addOrRestartBroker', data,
+            sync=True
+        )
 
     def restartBroker(self, brokerId):
         if not is_leader(): return
@@ -586,7 +608,7 @@ class Manager(SyncObj):
         for _, broker in self.brokers.items():
             val = is_server_running(broker.url)
             if val:
-                print(brokerMetaDataLock.keys())
+                #print(brokerMetaDataLock.keys())
                 brokerMetaDataLock[broker.docker_id].acquire()
                 # broker.lock.acquire()
                 broker.last_beat = time.monotonic()

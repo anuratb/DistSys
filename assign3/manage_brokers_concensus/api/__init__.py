@@ -107,7 +107,6 @@ while getManager()._getLeader() is None:
     time.sleep(1)
     print("Electing Leader...")
 
-
 # dotenv_file = dotenv.find_dotenv()
 # dotenv.load_dotenv(dotenv_file)
 
@@ -294,18 +293,28 @@ if is_leader() and not Load_from_db:
     # for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
     #     create_read_manager()
 
-    for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
-        create_read_manager()
+    # for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
+    #     create_read_manager()
     for i in range(int(os.environ["NUMBER_OF_BROKERS"])):
         os.system(f"docker rm -f broker{i}")
     for i in range(int(os.environ["NUMBER_OF_BROKERS"])):
         temp = [x for x in ip_list1 if x!=ip_list1[i]]
-        broker_obj = getManager().build_run(ip_list1[i],temp)
+        getManager().build_run(ip_list1[i],temp)
         #Manager.lock.acquire()
-        getManager().brokers[broker_obj.brokerID] = broker_obj
-        from api.data_struct import brokerMetaDataLock
-        brokerMetaDataLock[broker_obj.brokerID] = threading.Lock()
+        # getManager().brokers[broker_obj.brokerID] = broker_obj
+        # from api.data_struct import brokerMetaDataLock
+        # brokerMetaDataLock[broker_obj.brokerID] = threading.Lock()
         #Manager.lock.release()
+        # elif type == 'addOrRestartBroker':
+        #     restart = data['restart_']
+        #     curr_id = data['curr_id_']
+        #     url = data['url_']
+        #     docker_id = data['docker_id_']
+        #     db_uri = data['db_uri_']
+        print("Hoooooooooooooooooooooooooooooooooo")
+        
+        print("adfsdbdbdndndgnb")
+
 
 
     
