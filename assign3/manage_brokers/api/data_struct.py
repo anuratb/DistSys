@@ -397,8 +397,10 @@ class Manager:
         for i in range(1, numPartitions + 1):
             brokerTopicName = str(i) + '#' + topicName
             brokerList = cls.topicMetaData.getBrokerList(brokerTopicName)
-            brokerID = int(random() * len(brokerList))
-            brokerUrl = cls.getBrokerUrlFromID(brokerList[brokerID])
+            brokerID = cls.getAliveBroker(brokerList)
+            if not brokerID:
+                continue
+            brokerUrl = cls.getBrokerUrlFromID(brokerID)
             brokerCliID = None
             if isProducer:
                 brokerCliID = cls.getBrokerProdID()
@@ -427,6 +429,7 @@ class Manager:
                 if brokerID not in brokerMap:
                     brokerMap[brokerID] = []
                 brokerMap[brokerID].append((ID, i))
+                break
 
         for brokerID in brokerMap.keys():
             arr = [brokerID]
@@ -457,8 +460,9 @@ class Manager:
                 broker.lock.release()
             else:
                 requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(broker.brokerID)})
-    def checkManagerHeartBeat():
-        return
+    
+    @classmethod
+    def checkManagerHeartBeat(cls):
         with app.app_context():
             for obj in ManagerDB.query.all():
                 val = is_server_running(obj.url)
@@ -466,7 +470,13 @@ class Manager:
                     pass
                 else:
                     requests.get(APP_URL + "/crash_recovery_manager", params = {'managerID': str(obj.id)})
-        
+
+    @classmethod
+    def getAliveBroker(cls, brokerList):
+        for brokerID in brokerList:
+            if is_server_running(cls.getBrokerUrlFromID(brokerID)):
+                return brokerID
+        return None 
 
 class BrokerMetaData:
     def __init__(self, DB_URI = '', url = '', name = '',brokerID = 0,docker_id = 0):

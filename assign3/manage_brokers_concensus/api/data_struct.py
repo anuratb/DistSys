@@ -78,9 +78,6 @@ class Manager(SyncObj):
             oldVal = self.brokerProdID
             self.brokerProdID += 1
             return oldVal
-        elif type=='foo':
-            print( "Fooooo")
-            return True
         elif type == 'getBrokerConID':
             oldVal = self.brokerConID
             self.brokerConID += 1
@@ -119,7 +116,7 @@ class Manager(SyncObj):
                 numPartitions = data['numPartitions_']
                 assignedBrokers = data['assignedBrokers_']
 
-                self.Topics[topicName] = [topicID, numPartitions, 0, threading.Lock()]
+                self.Topics[topicName] = [topicID, numPartitions, 0]
                 partitionNo = 1
                 for K in assignedBrokers.keys():
                     self.PartitionBroker[K] = assignedBrokers[K]
@@ -405,10 +402,11 @@ class Manager(SyncObj):
         IDs = []
         brokerMap = {}
         for i in range(1, numPartitions + 1):
-            brokerTopicName = str(i) + '#' + topicName
-            brokerList = self.getBrokerList(brokerTopicName)
-            brokerID = int(random() * len(brokerList))
-            brokerUrl = self.getBrokerUrlFromID(brokerList[brokerID])
+            brokerList = self.getBrokerList(topicName, i)
+            brokerID = self.getAliveBroker(brokerList)
+            if not brokerID:
+                continue
+            brokerUrl = self.getBrokerUrlFromID(brokerID)
 
             brokerCliID = None
             if not isCon:
@@ -644,6 +642,11 @@ class Manager(SyncObj):
     def getTopicsList(self):
         return list(self.Topics.keys())
 
+    def getAliveBroker(self, brokerList):
+        for brokerID in brokerList:
+            if is_server_running(self.getBrokerUrlFromID(brokerID)):
+                return brokerID
+        return None
 
 def setManager(selfAddr, otherAddr):
     global manager
