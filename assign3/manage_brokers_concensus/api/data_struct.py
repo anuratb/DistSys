@@ -39,6 +39,7 @@ class BrokerMetaData:
         self.docker_id = docker_id
 
         self.port = 8500 #initial port for raft
+
     
 class Manager(SyncObj):
 
