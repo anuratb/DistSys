@@ -77,7 +77,9 @@ if __name__ == '__main__':
         if X:
             time.sleep(1)
             continue
-
+        status = user.getStatus()
+        status['leader'] = status['leader'].address
+        print(status['leader'])
         ip = int(input("Enter: "))
         if ip == 0:
             # if lockManager.tryAcquire('testLockName3', sync=True):
