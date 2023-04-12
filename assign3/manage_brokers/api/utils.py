@@ -73,9 +73,9 @@ def create_container(db_uri:str,container_name:str,img,envs={},expose_port=5124)
 
 def is_server_running(url):
     try:
-        #url = url.split('//')[1].split(':')[0]
-        res = requests.get(url+"/isAlive")
-        #return os.system("ping -c 1 "+url)==0
+        url = url.split('//')[1].split(':')[0]
+        #res = requests.get(url+"/isAlive")
+        return os.system("ping -c 1 "+url)==0
         if(res.json()['status'] == 'Success'):
             return True
     except:

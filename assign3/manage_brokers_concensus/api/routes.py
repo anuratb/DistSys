@@ -1,15 +1,15 @@
 
 from flask import request, redirect
 from api import app
-from api.data_struct import  Manager,Docker
+from api.data_struct import  Manager
 from api.models import TopicDB
 import os
-from api import db,random,DB_URI, APP_URL
+from api import db,random,DB_URI, APP_URL,IsWriteManager
 
 import requests
 from api import readManagerURL
 from flask_executor import Executor
-from data_struct import getManager, is_leader, get_status
+from api.data_struct import getManager, is_leader, get_status
 
 # TODO If not leader redirect to leader
 
@@ -426,7 +426,7 @@ def size():
 @app.route("/addbroker", methods=["POST","GET"])
 def addBroker():
     try:
-        broker_obj = Docker.build_run("../../broker")
+        broker_obj = Manager.build_run("../../broker")
         #Manager.lock.acquire()
         Manager.brokers[broker_obj.brokerID] = broker_obj
         #Manager.lock.release()

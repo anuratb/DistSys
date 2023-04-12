@@ -11,51 +11,25 @@ from sqlalchemy_utils.functions import database_exists
 from api.utils import *
 from flask_executor import Executor
 from apscheduler.schedulers.background import BackgroundScheduler
-from data_struct import setManager, getManager, is_leader
+
+
 dotenv_file = dotenv.find_dotenv()
 dotenv.load_dotenv(dotenv_file)
-
-ip_list1 = [2*x+2 for x in range(int(os.environ["NUMBER_OF_BROKERS"]))]
-ip_list2 = [x+2*len(ip_list1)+5 for x in range(int(os.environ["NUMBER_READ_MANAGERS"]))]
-post_ip = [f"172.18.0.{x+1}" for x in ip_list1]
-ip_list1 = [f"172.18.0.{x}" for x in ip_list1]
-
-ip_list2 = [f"172.18.0.{x}" for x in ip_list2]
-
-# TODO get addrs
-selfAddr = None
-otherAddrs = None
-
-setManager(selfAddr, otherAddrs)
-
-while getManager()._getLeader() is None:
-    time.sleep(1)
-    print("Electing Leader...")
 
 APP_URL = "http://127.0.0.1:5124"
 
-dotenv_file = dotenv.find_dotenv()
-dotenv.load_dotenv(dotenv_file)
 
 if 'IS_WRITE' not in os.environ.keys():
     os.environ['IS_WRITE'] = '1'
 
+
+
+
+Load_from_db = os.environ["LOAD_FROM_DB"]=='True'
+
 DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/anurat'
 DOCKER_DB_URI = 'postgresql+psycopg2://anurat:abcd@127.0.0.1:5432/'
 LOG_path = "./LOG.txt"
-
-###############################GLOBALS#####################################
-#random.seed(int(os.environ['RANDOM_SEED']))
-globLock = threading.Lock()
-#global cntManager 
-cntManager = 0 
-# cntManager = len(ManagerDB.query.all())
-readManagerURL = []
-
-replFactor = int(os.environ['REPLICATION_FACTOR'])
-
-###########################################################################
-
 
 db_username = os.environ['DB_USERNAME']
 
@@ -71,8 +45,19 @@ docker_img_broker = os.environ['DOCKER_IMG_BROKER']
 postgres_container = os.environ['POSTGRES_CONTAINER']
 print(docker_img_broker,db_username,db_host)
 
-Load_from_db = os.environ["LOAD_FROM_DB"]=='True'
-print(Load_from_db)
+
+###############################GLOBALS#####################################
+#random.seed(int(os.environ['RANDOM_SEED']))
+globLock = threading.Lock()
+#global cntManager 
+cntManager = 0 
+# cntManager = len(ManagerDB.query.all())
+readManagerURL = []
+
+replFactor = int(os.environ['REPLICATION_FACTOR'])
+
+###########################################################################
+
 
 def create_app(test_config = None):
     # create and configure the app
@@ -96,6 +81,67 @@ def create_app(test_config = None):
     return app, db
 
 app, db = create_app()
+
+
+
+
+from api.data_struct import setManager, getManager, is_leader
+
+ip_list1 = [2*x+2 for x in range(int(os.environ["NUMBER_OF_BROKERS"]))]
+ip_list2 = [x+2*len(ip_list1)+5 for x in range(int(os.environ["NUMBER_READ_MANAGERS"]))]
+post_ip = [f"172.18.0.{x+1}" for x in ip_list1]
+ip_list1 = [f"172.18.0.{x}" for x in ip_list1]
+
+ip_list2 = [f"172.18.0.{x}" for x in ip_list2]
+
+# TODO get addrs
+selfAddr = os.environ.get("master")
+
+otherAddrs = os.environ.get("slave").split("$")
+
+IsWriteManager = (int(os.environ["IS_WRITE"])==1)
+
+setManager(selfAddr, otherAddrs)
+
+while getManager()._getLeader() is None:
+    time.sleep(1)
+    print("Electing Leader...")
+
+
+# dotenv_file = dotenv.find_dotenv()
+# dotenv.load_dotenv(dotenv_file)
+
+if 'IS_WRITE' not in os.environ.keys():
+    os.environ['IS_WRITE'] = '1'
+
+
+
+
+Load_from_db = os.environ["LOAD_FROM_DB"]=='True'
+print(Load_from_db)
+
+# def create_app(test_config = None):
+#     # create and configure the app
+#     global DOCKER_DB_URI
+#     app = Flask(__name__, instance_relative_config = True)
+#     global DB_URI
+#     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+#     app.config['SECRET_KEY'] = '5791628bb0b13ce0c676dfde280ba245'
+#     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
+    
+#     if ('DOCKER_DB_URI' in os.environ.keys()):        
+#         DOCKER_DB_URI = os.environ['DOCKER_DB_URI']
+    
+#     #obj = json.loads(os.popen("docker inspect '{}'".format(postgres_container)).read())
+   
+#     DOCKER_DB_URI = 'postgresql+psycopg2://'+db_username+':'+db_password+'@'+db_host+':'+str(db_port)+'/'
+    
+#     DB_URI = DOCKER_DB_URI + os.environ['DB_NAME']
+#     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
+#     db = SQLAlchemy(app)
+#     return app, db
+
+# app, db = create_app()
 
 from api.models import ManagerDB,TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,DockerDB,localProducerDB,localConsumerDB
 
@@ -121,8 +167,10 @@ def create_read_manager():
     readManagerURL.append(url)
     globLock.release()
     return url
-
+from api.data_struct import  Manager,BrokerMetaData
+from api.models import DockerDB
 # TODO Modify DB updates below 
+'''
 def load_from_db():
 
     ############################ Write Pending commits to DB ######################################
@@ -222,14 +270,15 @@ def load_from_db():
         for obj in ManagerDB.query.all():
             readManagerURL.append(obj.url)
 
-
+'''
 
 app.app_context().push()
 
 # TODO Modify this
 if (IsWriteManager):
     if(Load_from_db):
-        load_from_db()
+        #load_from_db()
+        pass
     else:
         #db.session.remove()
         db.drop_all()
@@ -251,9 +300,11 @@ if is_leader() and not Load_from_db:
         os.system(f"docker rm -f broker{i}")
     for i in range(int(os.environ["NUMBER_OF_BROKERS"])):
         temp = [x for x in ip_list1 if x!=ip_list1[i]]
-        broker_obj = getManager().build_run("../../broker",ip_list1[i],temp)
+        broker_obj = getManager().build_run(ip_list1[i],temp)
         #Manager.lock.acquire()
         getManager().brokers[broker_obj.brokerID] = broker_obj
+        from api.data_struct import brokerMetaDataLock
+        brokerMetaDataLock[broker_obj.brokerID] = threading.Lock()
         #Manager.lock.release()
 
 

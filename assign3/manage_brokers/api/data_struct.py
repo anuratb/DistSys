@@ -448,7 +448,7 @@ class Manager:
 
     @classmethod    
     def checkBrokerHeartBeat(cls):
-        return
+        #return
         for _, broker in cls.brokers.items():
             val = is_server_running(broker.url)
             if val:
@@ -622,7 +622,7 @@ class Docker:
                 slave_ips += (itr + ":8500")
             else :
                 slave_ips += itr + ":8500$"
-        cmd = f"docker run --net brokernet --ip {master} --name broker{oldBrokerObj.docker_name} -d -p 0:5124 --expose 5124 -e CLEAR_DB={0} -e DB_URI={db_uri} -e BROKER_ID={brokerId} -e SELF_ADDR={master2} -e SLAVE_ADDR={slave_ips} {docker_img_broker}"
+        cmd = f"docker run --net brokernet --ip {master} --name {oldBrokerObj.docker_name} -d -p 0:5124 --expose 5124 -e CLEAR_DB={0} -e DB_URI={db_uri} -e BROKER_ID={brokerId} -e SELF_ADDR={master2} -e SLAVE_ADDR={slave_ips} {docker_img_broker}"
         os.system(cmd)
         print("HELL")
         #os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format(oldBrokerObj.docker_name,db_uri,docker_img_broker))

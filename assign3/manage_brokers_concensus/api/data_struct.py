@@ -1,8 +1,8 @@
 import threading
-from . import db,app
+from api import db,app
 import os, requests, time
 from api import random,DB_URI,replFactor
-from api.models import ManagerDB,ReplicationDB, TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB
+from api.models import ManagerDB,TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB
 from api import db_password,db_username,docker_img_broker, APP_URL
 import subprocess
 from api.utils import is_server_running
@@ -72,7 +72,7 @@ class Manager(SyncObj):
         self.brokerProdID = 0
 
     @replicated
-    def Updates(self, type, data):
+    def Updates(self, type, data=None):
         if type == 'getBrokerProdID':
             oldVal = self.brokerProdID
             self.brokerProdID += 1
@@ -122,13 +122,22 @@ class Manager(SyncObj):
 
                 # TODO assignedBrokers[i] is now a list... Modify DB updates
                 ####################### DB UPDATES ###########################
-                db.session.add(
-                    TopicBroker(
-                        topic = topicName,
-                        brokerID = assignedBrokers[K],
-                        partition = partitionNo
-                    )
+                # db.session.add(
+                #     TopicBroker(
+                #         topic = topicName,
+                #         brokerID = assignedBrokers[K],
+                #         partition = partitionNo
+                #     )
+                # )
+                # file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, assignedBrokers[K], partitionNo))
+                # partitionNo += 1
+                obj  = TopicBroker(
+                    topic=topicName,
+                    partition=partitionNo
                 )
+                for itr in assignedBrokers[K]:
+                    obj.brokerID.append(BrokerMetaDataDB.query.filter_by(broker_id=itr).first())
+                db.session.add(obj)
                 file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, assignedBrokers[K], partitionNo))
                 partitionNo += 1
             
@@ -239,7 +248,7 @@ class Manager(SyncObj):
 
     def getMsgIDWrapper(self):
         msgIDLock.acquire()
-        val = self.Updates('getMsgID', sync = True)
+        val = self.Updates('getMsgID',None, sync = True)
         msgIDLock.release()
         return val
 
@@ -439,7 +448,7 @@ class Manager(SyncObj):
             time.sleep(1)
             print(f"Updating States....")
 
-    def build_run(self):
+    def build_run(self,master,slave):
         brokerLock.acquire()
         curr_id = self.Updates('getBrokerID', sync = True)
         brokerLock.release()
@@ -577,9 +586,12 @@ class Manager(SyncObj):
         for _, broker in self.brokers.items():
             val = is_server_running(broker.url)
             if val:
-                broker.lock.acquire()
+                print(brokerMetaDataLock.keys())
+                brokerMetaDataLock[broker.docker_id].acquire()
+                # broker.lock.acquire()
                 broker.last_beat = time.monotonic()
-                broker.lock.release()
+                # broker.lock.release()
+                brokerMetaDataLock[broker.docker_id].release()
             else:
                 requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(broker.brokerID)})
 
