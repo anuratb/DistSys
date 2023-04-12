@@ -9,7 +9,7 @@ from api import db,random,DB_URI, APP_URL
 import requests
 from api import readManagerURL
 from flask_executor import Executor
-from data_struct import getManager, is_leader
+from data_struct import getManager, is_leader, get_status
 
 # TODO If not leader redirect to leader
 
@@ -40,7 +40,8 @@ executor = Executor(app)
 '''
 @ app.route("/topics", methods=['POST'])
 def create_topic():
-    
+    if not is_leader():
+        redirect('http://' + get_status()['leader'])
     print('Create Topic')
     topic_name : str = request.get_json().get('name')
     try:
@@ -75,7 +76,8 @@ def create_topic():
 
 @ app.route("/topics", methods=['GET'])
 def list_topics():
-    
+    if not is_leader():
+        redirect('http://' + get_status()['leader'])
     try : 
         topic_list = getManager().getTopicsList()
         topic_string : str = ", ".join(topic_list)
@@ -112,6 +114,8 @@ def list_topics():
 
 @ app.route("/consumer/register", methods=['POST'])
 def register_consumer():
+    if not is_leader():
+        redirect('http://' + get_status()['leader'])
     topic = request.get_json().get("topic")
     partition = request.get_json().get("partition")
     try:
@@ -163,6 +167,8 @@ def register_consumer():
 
 @ app.route("/producer/register", methods=['POST'])
 def register_producer():
+    if not is_leader():
+        redirect('http://' + get_status()['leader'])
     topic = request.get_json().get("topic")
     partition = request.get_json().get("partition")
     
@@ -216,6 +222,8 @@ def register_producer():
 
 @ app.route("/producer/produce", methods=['POST'])
 def enqueue():
+    if not is_leader():
+        redirect('http://' + get_status()['leader'])
     topic: str = request.get_json().get('topic')
     producer_id: str = request.get_json().get('producer_id')
     message: str = request.get_json().get('message')
@@ -225,7 +233,7 @@ def enqueue():
     brokerUrl = None
     brokerID = None
     partition = None
-    msgID = getManager().getMsgID()
+    msgID = getManager().getMsgIDWrapper()
 
     try:
         if producer_id[0] == '$':
@@ -344,7 +352,7 @@ def dequeue():
                     return redirect(url_with_param, 307)
             else:
                 # Redirect to the leader
-                pass
+                redirect('http://' + get_status()['leader'], 307)
 
     except Exception as e:
         return {
@@ -372,13 +380,15 @@ def dequeue():
 
 @ app.route("/get_partition_count", methods=['GET'])
 def getPartitionCount():
+    if not is_leader():
+        redirect('http://' + get_status()['leader'])
     try:
         topic: str = request.args.get('topic')
-        if topic not in Manager.topicMetaData.Topics:
+        if topic not in getManager().Topics:
             raise Exception(f"Topic {topic} doesn't exist")
         return {
             "status": "Success",
-            "count": str(Manager.topicMetaData.Topics[topic][1])
+            "count": str(getManager.Topics[topic][1])
         }
     except Exception as e:
         return {
