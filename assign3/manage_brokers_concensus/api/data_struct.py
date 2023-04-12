@@ -277,7 +277,7 @@ class Manager(SyncObj):
             'topicName_': topicName
         }
         rrIndexLock[isCon][K].acquire()
-        self.Updates('getUpdRRIndex', data, sync = True)
+        rrIndex = self.Updates('getUpdRRIndex', data, sync = True)
         rrIndexLock[isCon][K].release()
 
         globCli = None
@@ -358,7 +358,7 @@ class Manager(SyncObj):
 
             url = self.brokers[brokerSet[0]].url
             brokerTopicIDLock.acquire()
-            brokerTopicID = self.Updates('getBrokerTopicID')
+            brokerTopicID = self.Updates('getBrokerTopicID', sync = True)
             brokerTopicIDLock.release()
             # Send Post request to any one of the replicas
             res = requests.post(str(url) + "/topics", 
@@ -393,11 +393,11 @@ class Manager(SyncObj):
             brokerCliID = None
             if not isCon:
                 brokerProdIDLock.acquire()
-                brokerCliID = self.Updates('getBrokerProdID')
+                brokerCliID = self.Updates('getBrokerProdID', sync = True)
                 brokerProdIDLock.release()
             else:
                 brokerConIDLock.acquire()
-                brokerCliID = self.Updates('getBrokerConID')
+                brokerCliID = self.Updates('getBrokerConID', sync = True)
                 brokerConIDLock.release()
 
             res = requests.post(
