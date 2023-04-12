@@ -229,10 +229,10 @@ def enqueue():
     message: str = request.get_json().get('message')
 
     ID_LIST = None
-    localProdID = None
+    localProdID = producer_id
     brokerUrl = None
     brokerID = None
-    partition = None
+    partition = request.get_json().get('partition')
     msgID = getManager().getMsgIDWrapper()
 
     try:
@@ -301,7 +301,7 @@ def enqueue():
 def dequeue():
     topic: str = request.args.get('topic')
     consumer_id: str = request.args.get('consumer_id')
-    partition = None
+    partition = request.args.get('partition')
     try:
         if is_leader():
             ind = int(random() * len(readManagerURL))
@@ -347,8 +347,12 @@ def dequeue():
                         raise Exception(res.json.get("message"))
                 else:
                     partition = request.args.get('partition')
-                    brokerUrl = getManager().getBrokerUrl(topic, int(partition))
+                    ID_LIST = getManager().getBrokerList(topic, partition)
+                    brokerID = ID_LIST[int(random() * len(ID_LIST))]
+                    brokerUrl = getManager().getBrokerUrlFromID(brokerID)
                     url_with_param = f"{brokerUrl}/consumer/consume?topic={topic}&consumer_id={consumer_id}&partition={partition}"
+                    for id in ID_LIST:
+                        url_with_param = f"{url_with_param}&ID_LIST={id}"
                     return redirect(url_with_param, 307)
             else:
                 # Redirect to the leader
@@ -460,7 +464,7 @@ def removeBroker():
 def crashRecovary():
     try:
         brokerID = int(request.args.get('brokerID'))
-        executor.submit(Docker.restartBroker,  brokerID)
+        executor.submit(getManager().restartBroker,  brokerID)
         return "success"
     except Exception as e:
         return str(e)
@@ -469,7 +473,7 @@ def crashRecovary():
 def crashRecovaryManager():
     try:
         managerID = request.args.get('managerID')
-        executor.submit(Docker.restartManager,  managerID)
+        executor.submit(getManager().restartManager,  managerID)
         return "success"
     except Exception as e:
         return str(e)

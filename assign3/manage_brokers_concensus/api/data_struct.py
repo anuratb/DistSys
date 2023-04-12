@@ -72,123 +72,191 @@ class Manager(SyncObj):
         self.brokerProdID = 0
 
     @replicated
-    def getBrokerProdID(self):
-        oldVal = self.brokerProdID
-        self.brokerProdID += 1
-        return oldVal
+    def Updates(self, type, data):
+        if type == 'getBrokerProdID':
+            oldVal = self.brokerProdID
+            self.brokerProdID += 1
+            return oldVal
 
-    @replicated
-    def getBrokerConID(self):
-        oldVal = self.brokerConID
-        self.brokerConID += 1
-        return oldVal
+        elif type == 'getBrokerConID':
+            oldVal = self.brokerConID
+            self.brokerConID += 1
+            return oldVal
 
-    @replicated
-    def getBrokerTopicID(self):
-        oldVal = self.brokerTopicID
-        self.brokerTopicID += 1
-        return oldVal
+        elif type == 'getBrokerTopicID':
+            oldVal = self.brokerTopicID
+            self.brokerTopicID += 1
+            return oldVal
 
-    @replicated
-    def getMsgID(self):
-        oldVal = self.msgID
-        self.msgID += 1
-        return oldVal
+        elif type == 'getMsgID':
+            oldVal = self.msgID
+            self.msgID += 1
+            return oldVal
+
+        elif type == 'getTopicID':
+            oldVal = self.TopicID
+            self.TopicID += 1
+            return oldVal
+
+        elif type == 'getCliendID':
+            isCon = data['isCon_']
+            oldVal = self.clientID[isCon]
+            self.clientID[isCon] += 1
+            return oldVal
+
+        elif type == 'getBrokerID':
+            oldVal = self.brokerID
+            self.brokerID += 1
+            return oldVal
+
+        elif type == 'addTopicRepl':
+            topicName = data['topicName_']
+            topicID = data['topicID_']
+            numPartitions = data['numPartitions_']
+            assignedBrokers = data['assignedBrokers_']
+
+            self.Topics[topicName] = [topicID, numPartitions, 0, threading.Lock()]
+            partitionNo = 1
+            for K in assignedBrokers.keys():
+                self.PartitionBroker[K] = assignedBrokers[K]
+
+                # TODO assignedBrokers[i] is now a list... Modify DB updates
+                ####################### DB UPDATES ###########################
+                db.session.add(
+                    TopicBroker(
+                        topic = topicName,
+                        brokerID = assignedBrokers[K],
+                        partition = partitionNo
+                    )
+                )
+                file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, assignedBrokers[K], partitionNo))
+                partitionNo += 1
+            
+            db.session.commit()
+
+            ############### DB update ###############
+            obj = TopicDB(topicName = topicName, numPartitions = numPartitions, topic_id = topicID, rrindex = 0)
+            file.write("db.session.add(TopicDB(topicName={},numPartitions={},topic_id={}, rrindex=0))".format(topicName,numPartitions,topicID))
+            db.session.add(obj)
+            db.session.commit()
+            #########################################
+
+        elif type == 'addSubscriptionRepl':
+            clientID = data['clientID_']
+            clientIDs = data['clientIDs_']
+            isCon = data['isCon_']
+            topicName = data['topicName_']
+
+            K = clientID + "#" + topicName
+            rrIndexLock[isCon][K] = threading.Lock()
+            self.subscription[isCon][K] = clientIDs
+
+            ################## DB Updates #####################
+            glob_cli = None
+            if isCon:
+                glob_cli = globalConsumerDB(glob_id = clientID, topic = topicName, rrindex = 0, brokerCnt = len(clientIDs))
+                file.write("db.session.add(globalConsumerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
+            else:
+                glob_cli = globalProducerDB(glob_id = clientID, topic = topicName, rrindex = 0, brokerCnt = len(clientIDs))
+                file.write("db.session.add(globalProducerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
+            local_clis = []
+            for row in clientIDs:
+                broker_id = row[0] 
+                prod_ids = row[1:]
+                
+                for prod_id, partition in prod_ids:
+                    if isCon:
+                        local_clis.append(localConsumerDB(local_id = prod_id, broker_id = broker_id, glob_id = clientID, partition = partition))
+                        file.write("db.session.add(localConsumerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
+                    else:
+                        local_clis.append(localProducerDB(local_id = prod_id, broker_id = broker_id, glob_id = clientID, partition = partition))
+                        file.write("db.session.add(localProducerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
+        
+            cur_rrindex = random() * len(local_clis)
+            glob_cli.rrindex = cur_rrindex
+            db.session.add(glob_cli)
+            
+            for local_cli in local_clis:
+                db.session.add(local_cli)
+            db.session.commit()
+            ###################################################
+
+        elif type == 'getUpdRRIndex':
+            isCon = data['isCon_']
+            K = data['K_']
+            topic = data['topicName_']
+
+            if K not in self.rrIndex[isCon]:
+                self.rrIndex[isCon][K] = 0
+
+            index = self.rrIndex[isCon][K]
+            self.rrIndex[isCon][K] += 1
+
+            # TODO DB updates
+            obj = TopicDB.query.filter_by(topicName = topic).first()
+            obj.rrindex = obj.rrindex + 1
+            db.session.commit()
+
+            return index
+
+        elif type == 'addOrRestartBroker':
+            restart = data['restart_']
+            curr_id = data['curr_id_']
+            url = data['url_']
+            docker_id = data['docker_id_']
+            db_uri = data['db_uri_']
+
+            if restart:
+                self.brokers[curr_id].url = url
+                self.brokers[curr_id].docker_id = docker_id
+
+                with app.app_context():
+                    ################# DB UPDATES ########################
+                    BrokerMetaDataDB.query.filter_by(broker_id = curr_id).update(dict(url = url, docker_id = docker_id))
+                    # file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(curr_id, oldBrokerObj.docker_name,url,docker_id))
+                    db.session.commit()
+                    #####################################################
+            else:
+                brokerObj = BrokerMetaData(db_uri, url, "broker" + str(curr_id), curr_id, docker_id)
+                self.brokers[brokerObj.brokerID] = brokerObj
+                brokerMetaDataLock[curr_id] = threading.Lock()
+                ################# DB UPDATES ########################
+                obj = BrokerMetaDataDB(
+                    broker_id = brokerObj.brokerID, 
+                    url = brokerObj.url,
+                    db_uri = brokerObj.DB_URI,
+                    docker_name = brokerObj.docker_name,
+                    last_beat = brokerObj.last_beat,
+                    docker_id = brokerObj.docker_id,
+                )
+                file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(brokerObj.brokerID, brokerObj.url,brokerObj.DB_URI,brokerObj.docker_name,brokerObj.last_beat,brokerObj.docker_id))
+                db.session.add(obj)
+                db.session.commit()
+                #####################################################
+
+                return brokerObj
+
 
     def getMsgIDWrapper(self):
         msgIDLock.acquire()
-        val = self.getMsgID(sync = True)
+        val = self.Updates('getMsgID', sync = True)
         msgIDLock.release()
         return val
-        
-    @replicated
-    def getTopicID(self):
-        oldVal = self.TopicID
-        self.TopicID += 1
-        return oldVal
-
-    @replicated
-    def getCliendID(self, isCon):
-        oldVal = self.clientID[isCon]
-        self.clientID[isCon] += 1
-        return oldVal
-
-    @replicated
-    def getBrokerID(self):
-        oldVal = self.brokerID
-        self.brokerID += 1
-        return oldVal
-
-    @replicated
-    def addTopicRepl(self, topicID, topicName, numPartitions, assignedBrokers):
-        self.Topics[topicName] = [topicID, numPartitions, 0, threading.Lock()]
-        partitionNo = 1
-        for K in assignedBrokers.keys():
-            self.PartitionBroker[K] = assignedBrokers[K]
-
-            # TODO assignedBrokers[i] is now a list... Modify DB updates
-            ####################### DB UPDATES ###########################
-            db.session.add(
-                TopicBroker(
-                    topic = topicName,
-                    brokerID = assignedBrokers[K],
-                    partition = partitionNo
-                )
-            )
-            file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, assignedBrokers[K], partitionNo))
-            partitionNo += 1
-        
-        db.session.commit()
-
-        ############### DB update ###############
-        obj = TopicDB(topicName = topicName, numPartitions = numPartitions, topic_id = topicID, rrindex = 0)
-        file.write("db.session.add(TopicDB(topicName={},numPartitions={},topic_id={}, rrindex=0))".format(topicName,numPartitions,topicID))
-        db.session.add(obj)
-        db.session.commit()
-        #########################################
-
-    @replicated
-    def addSubscriptionRepl(self, clientID, topicName, clientIDs, isCon):
-        K = clientID + "#" + topicName
-        rrIndexLock[isCon][K] = threading.Lock()
-        self.subscription[isCon][K] = clientIDs
-
-        ################## DB Updates #####################
-        glob_cli = None
-        if isCon:
-            glob_cli = globalConsumerDB(glob_id = clientID, topic = topicName, rrindex = 0, brokerCnt = len(clientIDs))
-            file.write("db.session.add(globalConsumerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
-        else:
-            glob_cli = globalProducerDB(glob_id = clientID, topic = topicName, rrindex = 0, brokerCnt = len(clientIDs))
-            file.write("db.session.add(globalProducerDB(glob_id={},topic = {},rrindex=0,brokerCnt = {}))".format(clientID,topicName,len(clientIDs)))
-        local_clis = []
-        for row in clientIDs:
-            broker_id = row[0] 
-            prod_ids = row[1:]
-            
-            for prod_id, partition in prod_ids:
-                if isCon:
-                    local_clis.append(localConsumerDB(local_id = prod_id, broker_id = broker_id, glob_id = clientID, partition = partition))
-                    file.write("db.session.add(localConsumerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
-                else:
-                    local_clis.append(localProducerDB(local_id = prod_id, broker_id = broker_id, glob_id = clientID, partition = partition))
-                    file.write("db.session.add(localProducerDB(local_id = {},broker_id = {},glob_id = {},partition={}))".format(prod_id,broker_id,clientID,partition))
-    
-        cur_rrindex = random() * len(local_clis)
-        glob_cli.rrindex = cur_rrindex
-        db.session.add(glob_cli)
-        
-        for local_cli in local_clis:
-            db.session.add(local_cli)
-        db.session.commit()
-        ###################################################
 
     def addSubscription(self, clientIDs, topicName, isCon):
+        data = {
+            'isCon_': isCon
+        }
         subscriptionLock[isCon].acquire()
-        clientID = "$" + str(self.getCliendID(isCon, sync = True))
+        clientID = "$" + str(self.Updates('getCliendID', data, sync = True))
         subscriptionLock[isCon].release()
-       
-        self.addSubscriptionRepl(clientID, topicName, clientIDs, isCon, sync = True)
+        data = {
+            'clientID_': clientID,
+            'clientIDs_': clientIDs,
+            'isCon_': isCon,
+            'topicName_': topicName
+        }
+        self.Updates('addSubscriptionRepl', data, sync = True)
         return clientID
 
     def checkSubscription(self, clientID, topicName, isCon):
@@ -197,27 +265,19 @@ class Manager(SyncObj):
             return False
         return True
 
-    @replicated
-    def getUpdRRIndex(self, K, topic, isCon):
-        if K not in self.rrIndex[isCon]:
-            self.rrIndex[isCon][K] = 0
-
-        index = self.rrIndex[isCon][K]
-        self.rrIndex[isCon][K] += 1
-
-        # TODO DB updates
-        obj = TopicDB.query.filter_by(topicName = topic).first()
-        obj.rrindex = obj.rrindex + 1
-        db.session.commit()
-
-        return index
     '''
     Returns the brokerID and prodID to which the message should be sent
     '''
     def getRRIndex(self, clientID, topicName, isCon):
+        self.isReady_()
         K = clientID + '#' + topicName
+        data = {
+            'isCon_': isCon,
+            'K_': K,
+            'topicName_': topicName
+        }
         rrIndexLock[isCon][K].acquire()
-        rrIndex = self.getUpdRRIndex(K, isCon, topicName, sync = True)
+        rrIndex = self.Updates('getUpdRRIndex', data, sync = True)
         rrIndexLock[isCon][K].release()
 
         globCli = None
@@ -256,7 +316,7 @@ class Manager(SyncObj):
         if topicName in self.Topics:
             topicLock.release()
             raise Exception(f'Topicname: {topicName} already exists')
-        topicID = self.getTopicID(sync = True)
+        topicID = self.Updates('getTopicID', sync = True)
         # Choose the brokers
         numPartitions, assignedBrokers = self.assignBrokers(topicName, numPartitions)
         # All Brokers are down
@@ -265,8 +325,13 @@ class Manager(SyncObj):
         self.Topics[topicName] = []
         topicLock.release()
 
-        self.addTopicRepl(topicID, topicName, numPartitions, assignedBrokers, sync = True)
-
+        data = {
+            'topicName_': topicName,
+            'topicID_': topicID,
+            'numPartitions_': numPartitions,
+            'assignedBrokers_': assignedBrokers
+        }
+        self.Updates('addTopicRepl', data, sync = True)
 
     def getRandomBrokers(self):
         # Return a random set of replfactor many brokerIDs
@@ -293,7 +358,7 @@ class Manager(SyncObj):
 
             url = self.brokers[brokerSet[0]].url
             brokerTopicIDLock.acquire()
-            brokerTopicID = self.getBrokerTopicID(sync = True)
+            brokerTopicID = self.Updates('getBrokerTopicID', sync = True)
             brokerTopicIDLock.release()
             # Send Post request to any one of the replicas
             res = requests.post(str(url) + "/topics", 
@@ -328,11 +393,11 @@ class Manager(SyncObj):
             brokerCliID = None
             if not isCon:
                 brokerProdIDLock.acquire()
-                brokerCliID = self.getBrokerProdID(sync = True)
+                brokerCliID = self.Updates('getBrokerProdID', sync = True)
                 brokerProdIDLock.release()
             else:
                 brokerConIDLock.acquire()
-                brokerCliID = self.getBrokerConID(sync = True)
+                brokerCliID = self.Updates('getBrokerConID', sync = True)
                 brokerConIDLock.release()
 
             res = requests.post(
@@ -369,11 +434,14 @@ class Manager(SyncObj):
 
         return self.addSubscription(IDs, topicName, isCon)
 
-
+    def isReady_(self):
+        while not self.isReady():
+            time.sleep(1)
+            print(f"Updating States....")
 
     def build_run(self):
         brokerLock.acquire()
-        curr_id = getManager().getBrokerID()
+        curr_id = self.Updates('getBrokerID', sync = True)
         brokerLock.release()
         
         broker_nme = "broker" + str(curr_id)
@@ -433,42 +501,6 @@ class Manager(SyncObj):
         #####################################################
         return broker_obj
 
-    @replicated
-    def restartBrokerRepl(self, url, brokerId, docker_id):
-        pass
-
-    @replicated
-    def addOrRestartBroker(self, db_uri, url, curr_id, docker_id, restart = False):
-        if restart:
-            self.brokers[curr_id].url = url
-            self.brokers[curr_id].docker_id = docker_id
-
-            with app.app_context():
-                ################# DB UPDATES ########################
-                BrokerMetaDataDB.query.filter_by(broker_id = curr_id).update(dict(url = url, docker_id = docker_id))
-                # file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(curr_id, oldBrokerObj.docker_name,url,docker_id))
-                db.session.commit()
-                #####################################################
-        else:
-            brokerObj = BrokerMetaData(db_uri, url, "broker" + str(curr_id), curr_id, docker_id)
-            self.brokers[brokerObj.brokerID] = brokerObj
-            brokerMetaDataLock[curr_id] = threading.Lock()
-            ################# DB UPDATES ########################
-            obj = BrokerMetaDataDB(
-                broker_id = brokerObj.brokerID, 
-                url = brokerObj.url,
-                db_uri = brokerObj.DB_URI,
-                docker_name = brokerObj.docker_name,
-                last_beat = brokerObj.last_beat,
-                docker_id = brokerObj.docker_id,
-            )
-            file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.url,broker_obj.DB_URI,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
-            db.session.add(obj)
-            db.session.commit()
-            #####################################################
-
-            return brokerObj
-
     def restartBroker(self, brokerId):
         if not is_leader(): return
         print("HELLL")
@@ -490,9 +522,14 @@ class Manager(SyncObj):
         os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format(oldBrokerObj.docker_name,db_uri,docker_img_broker))
         url = get_url(oldBrokerObj.docker_name)
         url = 'http://' + url + ':5124'
-
-        self.addOrRestartBroker(url, None, brokerId, docker_id, True, sync = True)
-
+        data = {
+            'restart_': True,
+            'curr_id_': brokerId,
+            'url_': url,
+            'docker_id_': docker_id,
+            'db_uri_': db_uri
+        }
+        self.Updates('addOrRestartBroker', data, sync = True)
         brokerMetaDataLock[brokerId].release()
         print("HELLL")
 
