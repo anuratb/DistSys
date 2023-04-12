@@ -119,7 +119,7 @@ class Manager(SyncObj):
                 numPartitions = data['numPartitions_']
                 assignedBrokers = data['assignedBrokers_']
 
-                self.Topics[topicName] = [topicID, numPartitions, 0, threading.Lock()]
+                self.Topics[topicName] = [topicID, numPartitions, 0]
                 partitionNo = 1
                 for K in assignedBrokers.keys():
                     self.PartitionBroker[K] = assignedBrokers[K]
@@ -196,62 +196,64 @@ class Manager(SyncObj):
                 ###################################################
 
         elif type == 'getUpdRRIndex':
-            isCon = data['isCon_']
-            K = data['K_']
-            topic = data['topicName_']
+            with app.app_context():
+                isCon = data['isCon_']
+                K = data['K_']
+                topic = data['topicName_']
 
-            if K not in self.rrIndex[isCon]:
-                self.rrIndex[isCon][K] = 0
+                if K not in self.rrIndex[isCon]:
+                    self.rrIndex[isCon][K] = 0
 
-            index = self.rrIndex[isCon][K]
-            self.rrIndex[isCon][K] += 1
+                index = self.rrIndex[isCon][K]
+                self.rrIndex[isCon][K] += 1
 
-            # TODO DB updates
-            obj = TopicDB.query.filter_by(topicName = topic).first()
-            obj.rrindex = obj.rrindex + 1
-            db.session.commit()
+                # TODO DB updates
+                obj = TopicDB.query.filter_by(topicName = topic).first()
+                obj.rrindex = obj.rrindex + 1
+                db.session.commit()
 
-            return index
+                return index
 
         elif type == 'addOrRestartBroker':
-            restart = data['restart_']
-            curr_id = data['curr_id_']
-            url = data['url_']
-            docker_id = data['docker_id_']
-            db_uri = data['db_uri_']
-            raft_url = data['raft_url_']
-            if restart:
-                self.brokers[curr_id].url = url
-                self.brokers[curr_id].docker_id = docker_id
+            with app.app_context():
+                restart = data['restart_']
+                curr_id = data['curr_id_']
+                url = data['url_']
+                docker_id = data['docker_id_']
+                db_uri = data['db_uri_']
+                raft_url = data['raft_url_']
+                if restart:
+                    self.brokers[curr_id].url = url
+                    self.brokers[curr_id].docker_id = docker_id
 
-                with app.app_context():
+                    with app.app_context():
+                        ################# DB UPDATES ########################
+                        BrokerMetaDataDB.query.filter_by(broker_id = curr_id).update(dict(url = url, docker_id = docker_id))
+                        # file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(curr_id, oldBrokerObj.docker_name,url,docker_id))
+                        db.session.commit()
+                        #####################################################
+                else:
+                    print("start Called",data)
+
+                    brokerObj = BrokerMetaData(db_uri, url, "broker" + str(curr_id), curr_id, docker_id,raft_url)
+                    self.brokers[brokerObj.brokerID] = brokerObj
+                    brokerMetaDataLock[curr_id] = threading.Lock()
                     ################# DB UPDATES ########################
-                    BrokerMetaDataDB.query.filter_by(broker_id = curr_id).update(dict(url = url, docker_id = docker_id))
-                    # file.write("BrokerMetaDataDB.query.filter_by(broker_id = {}).update(dict(docker_name = {},url = {},docker_id = {}))".format(curr_id, oldBrokerObj.docker_name,url,docker_id))
-                    db.session.commit()
+                    with app.app_context():
+                        obj = BrokerMetaDataDB(
+                            broker_id = brokerObj.brokerID, 
+                            url = brokerObj.url,
+                            db_uri = brokerObj.DB_URI,
+                            docker_name = brokerObj.docker_name,
+                            last_beat = brokerObj.last_beat,
+                            docker_id = brokerObj.docker_id,
+                            raft_url= brokerObj.raft_url
+
+                        )
+                        db.session.add(obj)
+                        db.session.commit()
                     #####################################################
-            else:
-                print("start Called",data)
-
-                brokerObj = BrokerMetaData(db_uri, url, "broker" + str(curr_id), curr_id, docker_id,raft_url)
-                self.brokers[brokerObj.brokerID] = brokerObj
-                brokerMetaDataLock[curr_id] = threading.Lock()
-                ################# DB UPDATES ########################
-                with app.app_context():
-                    obj = BrokerMetaDataDB(
-                        broker_id = brokerObj.brokerID, 
-                        url = brokerObj.url,
-                        db_uri = brokerObj.DB_URI,
-                        docker_name = brokerObj.docker_name,
-                        last_beat = brokerObj.last_beat,
-                        docker_id = brokerObj.docker_id,
-                        raft_url= brokerObj.raft_url
-
-                    )
-                    db.session.add(obj)
-                    db.session.commit()
-                #####################################################
-                print("HASDSDSADS")
+                    print("HASDSDSADS")
 
 
 
@@ -318,9 +320,7 @@ class Manager(SyncObj):
         localCli = localClis[ind]
         prodID = localCli.local_id
         partition = localCli.partition
-        subbedTopicName = self.getSubbedTopicName(topicName, partition)
-
-        return self.getBrokerList(subbedTopicName), prodID, partition
+        return self.getBrokerList(topicName,partition), prodID, partition
 
 
     # Adds a topic and randomly decides number of paritions
@@ -405,8 +405,8 @@ class Manager(SyncObj):
         IDs = []
         brokerMap = {}
         for i in range(1, numPartitions + 1):
-            brokerTopicName = str(i) + '#' + topicName
-            brokerList = self.getBrokerList(brokerTopicName)
+            #brokerTopicName = str(i) + '#' + topicName
+            brokerList = self.getBrokerList(topicName,i)
             brokerID = int(random() * len(brokerList))
             brokerUrl = self.getBrokerUrlFromID(brokerList[brokerID])
 

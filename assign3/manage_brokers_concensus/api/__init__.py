@@ -95,9 +95,13 @@ ip_list1 = [f"172.18.0.{x}" for x in ip_list1]
 ip_list2 = [f"172.18.0.{x}" for x in ip_list2]
 
 # TODO get addrs
-selfAddr = os.environ.get("master")
-
-otherAddrs = os.environ.get("slave").split("$")
+raft_ip = os.environ.get("raft_ip").split("$")
+self_index = int(os.environ.get("CUR_ID"))
+selfAddr = raft_ip[self_index]
+manager_ip = os.environ.get("READ_MANAGER_URLS").split("$")
+otherAddrs = [x for x in raft_ip if x != selfAddr]
+for ip in manager_ip:
+    readManagerURL.append(ip)
 
 IsWriteManager = (int(os.environ["IS_WRITE"])==1)
 
@@ -145,15 +149,15 @@ print(Load_from_db)
 from api.models import ManagerDB,TopicDB,TopicBroker,BrokerMetaDataDB,globalProducerDB,globalConsumerDB,DockerDB,localProducerDB,localConsumerDB
 
 cntManager = 0
-def create_read_manager():
-    global cntManager
-    manager_nme = "manager"+str(cntManager)
-    #db_uri = create_postgres_db(manager_nme,manager_nme+"_db",db_username,db_password)    
-    db_uri = DB_URI #sharing database 
-    url = create_container(db_uri,manager_nme,os.environ['DOCKER_IMG_MANAGER'],envs={
-        'IS_WRITE':'0'
-    })      
-    print(url)
+def create_read_manager(read_urls):
+    # global cntManager
+    # manager_nme = "manager"+str(cntManager)
+    # #db_uri = create_postgres_db(manager_nme,manager_nme+"_db",db_username,db_password)    
+    # db_uri = DB_URI #sharing database 
+    # url = create_container(db_uri,manager_nme,os.environ['DOCKER_IMG_MANAGER'],envs={
+    #     'IS_WRITE':'0'
+    # })      
+    # print(url)
     
     ################# DB UPDATES ########################
     

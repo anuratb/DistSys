@@ -12,6 +12,14 @@ from flask_executor import Executor
 from api.data_struct import getManager, is_leader, get_status
 
 # TODO If not leader redirect to leader
+def get_leader_val():
+    leader = get_status()['leader']
+    from api import raft_ip,manager_ip
+    for i in range(0, len(raft_ip)):
+        if(raft_ip[i]==leader):
+            return "http://"+manager_ip[i]
+    return None
+
 
 
 
@@ -41,7 +49,8 @@ executor = Executor(app)
 @ app.route("/topics", methods=['POST'])
 def create_topic():
     if not is_leader():
-        redirect('http://' + get_status()['leader'])
+        print(get_leader_val()+"/topics")
+        return redirect( get_leader_val()+"/topics", 307)
     print('Create Topic')
     topic_name : str = request.get_json().get('name')
     try:
@@ -77,7 +86,7 @@ def create_topic():
 @ app.route("/topics", methods=['GET'])
 def list_topics():
     if not is_leader():
-        redirect('http://' + get_status()['leader'])
+        return redirect(get_leader_val()+"/topics")
     try : 
         topic_list = getManager().getTopicsList()
         topic_string : str = ", ".join(topic_list)
@@ -115,14 +124,18 @@ def list_topics():
 @ app.route("/consumer/register", methods=['POST'])
 def register_consumer():
     if not is_leader():
-        redirect('http://' + get_status()['leader'])
+        return redirect(get_leader_val()+"/consumer/register",307)
     topic = request.get_json().get("topic")
     partition = request.get_json().get("partition")
     try:
         if partition:
             ID_LIST = getManager().getBrokerList(topic, int(partition))
             brokerUrl = getManager().getBrokerUrlFromID(ID_LIST[int(random() * len(ID_LIST))])
-            conID = getManager().getBrokerConID()
+            #conID = getManager().getBrokerConID()
+            conID = getManager().Updates(
+                "getBrokerConID",
+                sync=True
+            )
             return requests.post(
                 brokerUrl + "/consumer/register", 
                 json = {
@@ -168,7 +181,7 @@ def register_consumer():
 @ app.route("/producer/register", methods=['POST'])
 def register_producer():
     if not is_leader():
-        redirect('http://' + get_status()['leader'])
+        return redirect( get_leader_val()+"/producer/register",307)
     topic = request.get_json().get("topic")
     partition = request.get_json().get("partition")
     
@@ -176,7 +189,10 @@ def register_producer():
         if partition:
             ID_LIST = getManager().getBrokerList(topic, int(partition))
             brokerUrl = getManager().getBrokerUrlFromID(ID_LIST[int(random() * len(ID_LIST))])
-            prodID = getManager().getBrokerProdID()
+            prodID = getManager().Updates(
+                "getBrokerProdID",
+                sync=True
+            )
             return requests.post(
                 brokerUrl + "/producer/register", 
                 json = {
@@ -223,7 +239,7 @@ def register_producer():
 @ app.route("/producer/produce", methods=['POST'])
 def enqueue():
     if not is_leader():
-        redirect('http://' + get_status()['leader'])
+        return redirect(get_leader_val()+"/producer/produce",307)
     topic: str = request.get_json().get('topic')
     producer_id: str = request.get_json().get('producer_id')
     message: str = request.get_json().get('message')
@@ -299,20 +315,27 @@ def enqueue():
 
 @ app.route("/consumer/consume", methods=['GET'])
 def dequeue():
-    topic: str = request.args.get('topic')
-    consumer_id: str = request.args.get('consumer_id')
-    partition = request.args.get('partition')
+    
     try:
+        topic: str = request.args.get('topic')
+        consumer_id: str = request.args.get('consumer_id')
+        partition = request.args.get('partition')
         if is_leader():
-            ind = int(random() * len(readManagerURL))
-            target_url = readManagerURL[ind] + "/consumer/consume"
-            url_with_param="{}?topic={}&consumer_id={}&from_leader={}".format(target_url, topic, True)
+            from api import self_index
+            while(True):
+                ind = int(random() * len(readManagerURL))
+                if ind!=self_index:
+                    target_url = "http://"+readManagerURL[ind] + "/consumer/consume"
+                    break
+            
+            url_with_param="{}?topic={}&consumer_id={}&from_leader={}".format(target_url, topic,consumer_id,True)
             
             if consumer_id[0] != '$':
                 partition = request.args.get('partition')
                 url_with_param = f"{url_with_param}&partition={partition}"
-
-            return redirect(url_with_param, 307) #redirect to read manager
+            print(url_with_param)
+            #return requests.get(url_with_param).json()
+            return redirect(url_with_param) #redirect to read manager
         else:
             # Check if its from a leader
             from_leader = request.args.get('from_leader')
@@ -353,10 +376,24 @@ def dequeue():
                     url_with_param = f"{brokerUrl}/consumer/consume?topic={topic}&consumer_id={consumer_id}&partition={partition}"
                     for id in ID_LIST:
                         url_with_param = f"{url_with_param}&ID_LIST={id}"
-                    return redirect(url_with_param, 307)
+                    print(url_with_param)
+                    #return requests.get(url_with_param).json()
+                    return redirect(url_with_param)
             else:
                 # Redirect to the leader
-                redirect('http://' + get_status()['leader'], 307)
+                val = get_status()['leader']
+                from api import raft_ip,manager_ip
+                for i,curval in enumerate(raft_ip):
+                    if curval == val:
+                        target_url = "http://"+ manager_ip[i] + "/consumer/consume"
+                        break
+                url_with_param="{}?topic={}&consumer_id={}&from_leader={}".format(target_url, topic,consumer_id, True)
+            
+                if consumer_id[0] != '$':
+                    partition = request.args.get('partition')
+                    url_with_param = f"{url_with_param}&partition={partition}"
+                print(url_with_param)
+                return redirect(url_with_param)
 
     except Exception as e:
         return {
@@ -385,14 +422,16 @@ def dequeue():
 @ app.route("/get_partition_count", methods=['GET'])
 def getPartitionCount():
     if not is_leader():
-        redirect('http://' + get_status()['leader'])
+        url_with_param = f"{get_leader_val()}/get_partition_count"
+        url_with_param = f"{url_with_param}?topic={request.args.get('topic')}"
+        return redirect(url_with_param)
     try:
         topic: str = request.args.get('topic')
         if topic not in getManager().Topics:
             raise Exception(f"Topic {topic} doesn't exist")
         return {
             "status": "Success",
-            "count": str(getManager.Topics[topic][1])
+            "count": str(getManager().Topics[topic][1])
         }
     except Exception as e:
         return {
