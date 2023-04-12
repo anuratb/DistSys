@@ -231,7 +231,7 @@ def enqueue():
 def dequeue():
     
     try :
-        print(request.args,request.get_json())
+        print(request.args)
         topicName: str = request.args.get('topic', type=str)
         print(topicName)
         partition = request.args.get("partition")

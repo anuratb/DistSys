@@ -2,7 +2,7 @@ import threading
 from . import db,app
 import os, requests, time
 from api import random,DB_URI,replFactor
-from api.models import ManagerDB,ReplicationDB, TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB
+from api.models import ManagerDB,TopicDB,TopicBroker,globalProducerDB,localProducerDB,globalConsumerDB,localConsumerDB,BrokerMetaDataDB
 from api import db_password,db_username,docker_img_broker, APP_URL
 import subprocess
 from api.utils import is_server_running
@@ -68,7 +68,7 @@ class TopicMetaData:
                 partition=partitionNo
             )
             for itr in assignedBrokers[K]:
-                obj.brokerID.append(itr)
+                obj.brokerID.append(BrokerMetaDataDB.query.filter_by(broker_id=itr).first())
             db.session.add(obj)
             file.write("db.session.add(TopicBroker(topic = {},brokerID = {},partition = {}))".format(topicName, assignedBrokers[K], partitionNo))
             partitionNo += 1
@@ -167,9 +167,9 @@ class ProducerMetaData():
         localProd = globProd.localProducer[ind]
         prodID = localProd.local_id
         partition = localProd.partition
-        subbedTopicName = TopicMetaData.getSubbedTopicName(topicName, partition)
+        subbedTopicName = Manager.topicMetaData.getSubbedTopicName(topicName, partition)
 
-        return TopicMetaData.getBrokerList(subbedTopicName), prodID, partition
+        return Manager.topicMetaData.getBrokerList(subbedTopicName), prodID, partition
 
 
 class ConsumerMetaData():
@@ -234,8 +234,7 @@ class ConsumerMetaData():
         localCons = globCons.localConsumer[ind]
         ConsID= localCons.local_id
         partition = localCons.partition
-        subbedTopicName = TopicMetaData.getSubbedTopicName(topicName, partition)
-        return TopicBroker.query.filter_by(topic=topicName,partition=partition).first().broker_id, ConsID, partition
+        return [obj.broker_id for obj in TopicBroker.query.filter_by(topic=topicName,partition=partition).first().brokerID], ConsID, partition
         #return TopicMetaData.getBrokerList(subbedTopicName), ConsID, partition
 
 class Manager:
@@ -449,6 +448,7 @@ class Manager:
 
     @classmethod    
     def checkBrokerHeartBeat(cls):
+        return
         for _, broker in cls.brokers.items():
             val = is_server_running(broker.url)
             if val:
@@ -458,6 +458,7 @@ class Manager:
             else:
                 requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(broker.brokerID)})
     def checkManagerHeartBeat():
+        return
         with app.app_context():
             for obj in ManagerDB.query.all():
                 val = is_server_running(obj.url)
@@ -476,7 +477,7 @@ class BrokerMetaData:
         self.brokerID = brokerID
         self.docker_id = docker_id
         self.lock = threading.Lock()
-        self.port = 8000 #initial port for raft
+        self.port = 8500 #initial port for raft
 
 class Docker:
     
@@ -522,7 +523,10 @@ class Docker:
         ####################################################
         
         '''    
-        db_uri = create_postgres_db(broker_nme,broker_nme+"_db",db_username,db_password)
+        temp = master.split('.')
+        temp[-1] = str(int(temp[-1])+1)
+        post_adr = '.'.join(temp)
+        db_uri = create_postgres_db(broker_nme,broker_nme+"_db",db_username,db_password,post_adr)
         #db_uri = 'postgresql+psycopg2://{}:{}@{}:{}/{}'.format(db_username,db_password,db_host,db_port,broker_nme)
         #obj = os.system("docker build -t {}:latest {} --build-arg DB_URI={}".format("broker"+str(curr_id),path,str(db_uri)))
 
@@ -542,20 +546,21 @@ class Docker:
         -e DB_URI="postgresql+psycopg2://$user:$pass@$IP:5432/$DB_NAME" 
         -e BROKER_ID=$4 -e SELF_ADDR=$6 -e SLAVE_ADDR=$7 broker
         """
-        master2 = master+":8000"
+        master2 = master+":8500"
         slave_ips= ""
         for i,itr in enumerate(slave):
             if i+1==len(slave):
-                slave_ips += (itr + ":8000")
+                slave_ips += (itr + ":8500")
             else :
-                slave_ips += itr + ":8000$"
-        cmd = f"docker run -net brokernet --ip {master} --name broker{str(curr_id)} -d -p 0:5124 --expose 5124 -e DB_URI={db_uri} -e BROKER_ID={curr_id} -e SELF_ADDR={master2} -e SLAVE_ADDR={slave_ips} {docker_img_broker}"
+                slave_ips += itr + ":8500$"
+
+        cmd = f"docker run --net brokernet --ip {master} --name broker{curr_id} -d -p 0:5124 --expose 5124 -e CLEAR_DB={1} -e DB_URI={db_uri} -e BROKER_ID={curr_id} -e SELF_ADDR={master2} -e SLAVE_ADDR='{slave_ips}' --rm {docker_img_broker}"
         os.system(cmd)
         #print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
         url = 'http://' + obj.decode('utf-8').strip() + ':5124'
-        raft_url = 'http://' + obj.decode('utf-8').strip() + ':8000'
-        sync_url = 'http://' + obj.decode('utf-8').strip() + ':8001'
+        raft_url = 'http://' + obj.decode('utf-8').strip() + ':8500'
+        sync_url = 'http://' + obj.decode('utf-8').strip() + ':8501'
         print(url)
 
         #self.lock.acquire()
@@ -605,7 +610,7 @@ class Docker:
         docker_id = 0
         os.system("docker rm -f {}".format(oldBrokerObj.docker_name))
         master = oldBrokerObj.url.split(":")[1].split("//")[1]
-        master2 = master+":8000"
+        master2 = master+":8500"
         from api import ip_list1
         slave = []
         for val in ip_list1:
@@ -614,10 +619,10 @@ class Docker:
         slave_ips= ""
         for i,itr in enumerate(slave):
             if i+1==len(slave):
-                slave_ips += (itr + ":8000")
+                slave_ips += (itr + ":8500")
             else :
-                slave_ips += itr + ":8000$"
-        cmd = f"docker run -net brokernet --ip {master} --name broker{oldBrokerObj.docker_name} -d -p 0:5124 --expose 5124 -e DB_URI={db_uri} -e BROKER_ID={brokerId} -e SELF_ADDR={master2} -e SLAVE_ADDR={slave_ips} {docker_img_broker}"
+                slave_ips += itr + ":8500$"
+        cmd = f"docker run --net brokernet --ip {master} --name broker{oldBrokerObj.docker_name} -d -p 0:5124 --expose 5124 -e CLEAR_DB={0} -e DB_URI={db_uri} -e BROKER_ID={brokerId} -e SELF_ADDR={master2} -e SLAVE_ADDR={slave_ips} {docker_img_broker}"
         os.system(cmd)
         print("HELL")
         #os.system("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} --rm {}".format(oldBrokerObj.docker_name,db_uri,docker_img_broker))

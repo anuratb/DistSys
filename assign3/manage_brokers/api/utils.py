@@ -10,10 +10,12 @@ def get_url(container:str):
     return url
 
 
-def create_postgres_db(db_name:str,container_name:str,user,password,postgres_img="postgres"):
+def create_postgres_db(db_name:str,container_name:str,user,password,ip:str,postgres_img="postgres"):
     #os.system("docker rm -f {}".format(container_name))
     #max 5 restarts
-    cmd = "docker run -d --expose 5432 --name {} -e POSTGRES_PASSWORD={} -e POSTGRES_USER={} -p 0:5432 -v /home/anurat/data_cache_{}:/var/lib/postgresql/data  {}".format(container_name,password,user,container_name,postgres_img)
+    #-v /home/anurat/data_cache_{}:/var/lib/postgresql/data
+    os.system(f"docker rm -f {container_name}")
+    cmd = f"docker run --net brokernet --ip {ip} -d --expose 5432 --name {container_name} -e POSTGRES_PASSWORD={password} -e POSTGRES_USER={user} -p 0:5432   {postgres_img}"
     os.system(cmd)
     
     url = get_url(container_name)

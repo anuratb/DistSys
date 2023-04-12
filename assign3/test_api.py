@@ -91,6 +91,8 @@ def consumer(url, con_name, topics):
     while True:
         try:
             C = Q.createClient(topicMap, False)
+            if type(C) == str:
+                raise Exception(f"{con_name}: Consumer creation Error: " + C)
             print(f"{con_name}: Consumer successfully created.")
             break
         except Exception as e:

@@ -7,8 +7,8 @@ import dotenv
 
 DB_URI = 'postgresql+psycopg2://anurat:abcd@10.102.68.15:5432/anurat'
 
-dotenv_file = dotenv.find_dotenv()
-dotenv.load_dotenv(dotenv_file)
+#dotenv_file = dotenv.find_dotenv()
+#dotenv.load_dotenv(dotenv_file)
 
 
 def create_app(test_config = None):
@@ -54,17 +54,18 @@ def create_app(test_config = None):
 app, db = create_app('./config.json')
 from api.data_struct import createQObj
 #print(os.environ)
-print(os.environ["SELF_ADDR"],os.environ["SLAVE_ADDR"].split('$'))
+print(os.environ["SLAVE_ADDR"],os.environ["SLAVE_ADDR"].split('$'))
 createQObj(os.environ["SELF_ADDR"],os.environ["SLAVE_ADDR"].split('$'))
 from api.data_struct import QObj
 while QObj._getLeader() is None:
     time.sleep(1)
     print("No leader")
     continue
-
+print("Leader Election Success")
 master_ip,master_port = os.environ["SELF_ADDR"].split(':')
 master_port = int(master_port)+1
 slave = os.environ["SLAVE_ADDR"].split('$')
+print(slave,os.environ["SLAVE_ADDR"])
 slave = [itr.split(':') for itr in slave]
 slave_ip = [itr[0] for itr in slave]
 slave_port = [int(itr[1])+1 for itr in slave]
@@ -73,7 +74,7 @@ slave_port = [int(itr[1])+1 for itr in slave]
 # while syncObj._getLeader() is None:
 #     continue
 
-
+print("HOOOOOOOOOOOOOO")
 #from api.data_struct import QueueList
 
 from api.models import QueueDB,Topics,Producer,Consumer
@@ -152,15 +153,18 @@ def load_from_db():
     #print(Queue.queue)
     '''
 
-
+print("HOOOOOOOOOOOOO46356346699999999")
 app.app_context().push()
+print("HOOOOOOOOOOOOO46356346677777777")
 #from api.data_struct import Queue
 #Queue.clear()
-db.drop_all()
+#if int(os.environ.get("CLEAR_DB"))==1:
+#    db.drop_all()
+print("HOOOOOOOOOOOOO#4%%%%%%%")
 db.create_all()
 #load_from_db()
 
-    
+print("HOOOOOOOOOOOOO#435424")
     
     
 from api import routes

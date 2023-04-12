@@ -23,22 +23,6 @@ class TopicDB(db.Model):
     numPartitions = db.Column(db.Integer,nullable=False)
     rrindex = db.Column(db.Integer,nullable=False)
     #topicMetaData_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
-replication_table = db.Table('user_group',
-                      db.Column('topic_id', db.Integer, db.ForeignKey('TopicBroker.id')),
-                      db.Column('broker_id', db.Integer, db.ForeignKey('Broker.id')))
-class TopicBroker(db.Model):
-    id = db.Column(db.Integer,primary_key=True,nullable=False)
-    topic = db.Column(db.String,primary_key=False,nullable=False)
-    partition = db.Column(db.Integer,primary_key=False,nullable=False)
-    #brokerID = db.Column(db.Integer,primary_key = False,nullable=False)
-    brokerID = db.relationship(
-        'TopicBroker',
-        secondary=replication_table,
-        primaryjoin=(replication_table.c.topic_id == id),
-        secondaryjoin=(replication_table.c.broker_id == id),
-        backref=db.backref('topicPartitions',lazy='dynamic'),
-        lazy='dynamic')
-    #topic_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
 
 #class BrokerURL(db.Model):
 #    brokerURL = db.Column(db.string,primary_key=True,nullable = False)
@@ -143,6 +127,24 @@ class BrokerMetaDataDB(db.Model):
     raft_url = db.Column(db.String,nullable=False)
     sync_url = db.Column(db.String,nullable=False)
 
+
+replication_table = db.Table('user_group',
+                      db.Column('topic_id', db.Integer, db.ForeignKey('topic_broker.id')),
+                      db.Column('broker_id', db.Integer, db.ForeignKey('broker_meta_data_db.broker_id')))
+
+
+class TopicBroker(db.Model):
+    #__tablename__ = 'TopicBroker'
+    id = db.Column(db.Integer,primary_key=True,nullable=False)
+    topic = db.Column(db.String,primary_key=False,nullable=False)
+    partition = db.Column(db.Integer,primary_key=False,nullable=False)
+    #brokerID = db.Column(db.Integer,primary_key = False,nullable=False)
+    brokerID = db.relationship(
+        'BrokerMetaDataDB',
+        secondary=replication_table,
+        backref=db.backref('topicPartitions',lazy='dynamic'),
+        lazy='dynamic')
+    #topic_id = db.Column(db.Integer,db.ForeignKey('TopicMetadataDB.id'))
 ############################### DOCKER METADATA ##############################################
 class DockerDB(db.Model):
     id = db.Column(db.Integer,primary_key=True,nullable=False)

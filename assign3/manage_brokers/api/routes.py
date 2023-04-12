@@ -217,10 +217,10 @@ def enqueue():
     message: str = request.get_json().get('message')
 
     ID_LIST = None
-    localProdID = None
+    localProdID = producer_id
     brokerUrl = None
     brokerID = None
-    partition = None
+    partition = request.get_json().get('partition')
     msgID = Manager.getMsgID()
     
     try:
@@ -302,7 +302,7 @@ def enqueue():
 def dequeue():
     topic: str = request.args.get('topic')
     consumer_id: str = request.args.get('consumer_id')
-    partition = None
+    partition = request.args.get('partition')
     try:
         if IsWriteManager:
             #Update topic rrindex
@@ -326,18 +326,19 @@ def dequeue():
                 partition = request.args.get('partition')
                 url_with_param = f"{url_with_param}&partition={partition}"
 
-            return redirect(url_with_param, 307) #redirect to read manager
-        else:
+            #return redirect(url_with_param, 307) #redirect to read manager
             if consumer_id[0] == '$':
-                topicRRIndex = int(request.args.get('topicRRIndex'))
-                brokerID, conID, partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic, topicRRIndex)
+                topicRRIndex = rrIndex
+                brokerIDs, conID, partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic, topicRRIndex)
+                brokerID = brokerIDs[int(random() * len(brokerIDs))]
                 brokerUrl = Manager.getBrokerUrlFromID(brokerID)
                 res = requests.get(
                     brokerUrl + "/consumer/consume",
                     params = {
                         "topic": topic,
                         "consumer_id": str(conID),
-                        "partition":partition
+                        "partition":partition,
+                        "ID_LIST":brokerIDs
                     }
                 )
                 if res.status_code != 200:
@@ -358,7 +359,50 @@ def dequeue():
             else:
                 partition = request.args.get('partition')
                 brokerUrl = Manager.getBrokerUrl(topic, int(partition))
+                from api.models import TopicBroker
+                ID_LIST = [obj.broker_id for obj in TopicBroker.query.filter_by(topic=topicName,partition=partition).first().broker_id],
                 url_with_param = f"{brokerUrl}/consumer/consume?topic={topic}&consumer_id={consumer_id}&partition={partition}"
+                for id in ID_LIST:
+                    url_with_param = f"{url_with_param}&ID_LIST={id}"
+                return redirect(url_with_param, 307)
+        else:
+            if consumer_id[0] == '$':
+                topicRRIndex = int(request.args.get('topicRRIndex'))
+                brokerIDs, conID, partition = Manager.consumerMetaData.getRRIndex(consumer_id, topic, topicRRIndex)
+                brokerID = brokerIDs[int(random() * len(brokerIDs))]
+                brokerUrl = Manager.getBrokerUrlFromID(brokerID)
+                res = requests.get(
+                    brokerUrl + "/consumer/consume",
+                    params = {
+                        "topic": topic,
+                        "consumer_id": str(conID),
+                        "partition":partition,
+                        "ID_LIST":brokerIDs
+                    }
+                )
+                if res.status_code != 200:
+                    # Recover the broker
+                    requests.get(APP_URL + "/crash_recovery", params = {'brokerID': str(brokerID)})
+                    return {
+                        "status": "Failure",
+                        "message": "Service currently unavailable. Try again later."
+                    }
+                elif(res.json().get("status") == "Success"):
+                    msg = res.json().get("message")
+                    return {
+                        "status": "Success",
+                        "message": msg
+                    }
+                else:
+                    raise Exception(res.json.get("message"))
+            else:
+                partition = request.args.get('partition')
+                brokerUrl = Manager.getBrokerUrl(topic, int(partition))
+                from api.models import TopicBroker
+                ID_LIST = [obj.broker_id for obj in TopicBroker.query.filter_by(topic=topicName,partition=partition).first().broker_id],
+                url_with_param = f"{brokerUrl}/consumer/consume?topic={topic}&consumer_id={consumer_id}&partition={partition}"
+                for id in ID_LIST:
+                    url_with_param = f"{url_with_param}&ID_LIST={id}"
                 return redirect(url_with_param, 307)
 
     except Exception as e:
