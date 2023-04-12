@@ -27,7 +27,7 @@ class BrokerMetaData:
         self.brokerID = brokerID
         self.docker_id = docker_id
         self.lock = threading.Lock()
-        self.port = 8000 #initial port for raft
+        self.port = 8500 #initial port for raft
     
 class Manager(SyncObj):
 
@@ -362,7 +362,7 @@ class Manager(SyncObj):
         return self.addSubscription(IDs, topicName, isCon)
 
 
-    def build_run(self):
+    def build_run(self,master,slave):
         self.brokerLock.acquire()
         curr_id = getManager().getBrokerID()
         self.brokerLock.release()
@@ -374,14 +374,55 @@ class Manager(SyncObj):
         docker_id = 0
         print("broker"+str(curr_id),db_uri,docker_img_broker)
         os.system("docker rm -f broker"+str(curr_id))
-        cmd = "docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} -e BROKER_ID={}  {}".format("broker"+str(curr_id),db_uri,curr_id,docker_img_broker)
+        # cmd = "docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={} -e BROKER_ID={}  {}".format("broker"+str(curr_id),db_uri,curr_id,docker_img_broker)
+        # os.system(cmd)
+        # print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
+        # obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
+        # url = 'http://' + obj.decode('utf-8').strip() + ':5124'
+        # print(url)
+
+        # self.addOrRestartBroker(db_uri, url, curr_id, docker_id, sync = True)
+        master2 = master+":8500"
+        slave_ips= ""
+        for i,itr in enumerate(slave):
+            if i+1==len(slave):
+                slave_ips += (itr + ":8500")
+            else :
+                slave_ips += itr + ":8500$"
+
+        cmd = f"docker run --net brokernet --ip {master} --name broker{curr_id} -d -p 0:5124 --expose 5124 -e CLEAR_DB={1} -e DB_URI={db_uri} -e BROKER_ID={curr_id} -e SELF_ADDR={master2} -e SLAVE_ADDR='{slave_ips}' --rm {docker_img_broker}"
         os.system(cmd)
-        print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
+        #print("docker run --name {} -d -p 0:5124 --expose 5124 -e DB_URI={}  {}".format("broker"+str(curr_id),db_uri,docker_img_broker))
         obj = subprocess.Popen("docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' broker"+str(curr_id), shell=True, stdout=subprocess.PIPE).stdout.read()
         url = 'http://' + obj.decode('utf-8').strip() + ':5124'
+        raft_url = 'http://' + obj.decode('utf-8').strip() + ':8500'
+        sync_url = 'http://' + obj.decode('utf-8').strip() + ':8501'
         print(url)
 
-        self.addOrRestartBroker(db_uri, url, curr_id, docker_id, sync = True)
+        #self.lock.acquire()
+        #self.id[broker_nme] = BrokerMetaData(db_uri,url,"broker"+str(curr_id))
+        #self.lock.release()
+        #TopicMetaData.lock.aquire()
+        #TopicMetaData.addBrokerUrl(url)
+        #TopicMetaData.lock.release()
+        broker_obj = BrokerMetaData(db_uri,url,"broker"+str(curr_id),curr_id,docker_id)
+        ################# DB UPDATES ########################
+        
+        obj = BrokerMetaDataDB(
+            broker_id = broker_obj.brokerID, 
+            url = broker_obj.url,
+            db_uri = broker_obj.DB_URI,
+            docker_name = broker_obj.docker_name,
+            last_beat = broker_obj.last_beat,
+            docker_id = broker_obj.docker_id,
+            raft_url = raft_url,
+            sync_url = sync_url
+        )
+        file.write("db.session.add(BrokerMetaDataDB(broker_id = {}, url = {},db_uri = {},docker_name = {},last_beat = {},docker_id = {}))".format(broker_obj.brokerID, broker_obj.url,broker_obj.DB_URI,broker_obj.docker_name,broker_obj.last_beat,broker_obj.docker_id))
+        db.session.add(obj)
+        db.session.commit()
+        #####################################################
+        return broker_obj
 
     @replicated
     def restartBrokerRepl(self, url, brokerId, docker_id):
