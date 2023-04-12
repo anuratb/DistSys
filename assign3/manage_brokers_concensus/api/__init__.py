@@ -12,6 +12,15 @@ from api.utils import *
 from flask_executor import Executor
 from apscheduler.schedulers.background import BackgroundScheduler
 from data_struct import setManager, getManager, is_leader
+dotenv_file = dotenv.find_dotenv()
+dotenv.load_dotenv(dotenv_file)
+
+ip_list1 = [2*x+2 for x in range(int(os.environ["NUMBER_OF_BROKERS"]))]
+ip_list2 = [x+2*len(ip_list1)+5 for x in range(int(os.environ["NUMBER_READ_MANAGERS"]))]
+post_ip = [f"172.18.0.{x+1}" for x in ip_list1]
+ip_list1 = [f"172.18.0.{x}" for x in ip_list1]
+
+ip_list2 = [f"172.18.0.{x}" for x in ip_list2]
 
 # TODO get addrs
 selfAddr = None
@@ -236,8 +245,16 @@ if is_leader() and not Load_from_db:
     # for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
     #     create_read_manager()
 
-    for _ in range(int(os.environ["NUMBER_OF_BROKERS"])):
-        getManager().build_run()
+    for _ in range(int(os.environ["NUMBER_READ_MANAGERS"])):
+        create_read_manager()
+    for i in range(int(os.environ["NUMBER_OF_BROKERS"])):
+        os.system(f"docker rm -f broker{i}")
+    for i in range(int(os.environ["NUMBER_OF_BROKERS"])):
+        temp = [x for x in ip_list1 if x!=ip_list1[i]]
+        broker_obj = getManager().build_run("../../broker",ip_list1[i],temp)
+        #Manager.lock.acquire()
+        getManager().brokers[broker_obj.brokerID] = broker_obj
+        #Manager.lock.release()
 
 
     
